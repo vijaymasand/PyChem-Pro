@@ -20,6 +20,8 @@
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
 - [Running the Application](#running-the-application)
+  - [Recommended: One-Click Launchers](#recommended-one-click-launchers)
+  - [Manual Setup (all platforms)](#manual-setup-all-platforms)
 - [Quick Start — Python API](#quick-start--python-api)
 - [Project Structure](#project-structure)
 - [Services Layer (Public Protocols)](#services-layer-public-protocols)
@@ -27,7 +29,6 @@
 - [Rendering Pipeline](#rendering-pipeline)
 - [Multiprocessing](#multiprocessing)
 - [Plugins](#plugins)
-- [Testing](#testing)
 - [Development Workflow](#development-workflow)
 - [Contributing](#contributing)
 - [Cross-Platform Notes](#cross-platform-notes)
@@ -200,10 +201,13 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-This installs:
+This installs the runtime dependencies:
 - `PySide6 >= 6.5` (Qt GUI framework)
-- `numpy >= 1.24`
-- `nuitka >= 2.0` (optional, for creating standalone binaries)
+- `numpy >= 1.24`, `matplotlib >= 3.7`, `pandas >= 2.0`, `scipy >= 1.10`
+- `scikit-learn >= 1.3`, `rdkit >= 2023.3` (used by QSAR and descriptor plugins)
+- `psutil`, `pillow`
+
+Build tools (Nuitka, dmgbuild) are in `requirements-build.txt` and only needed if you want to compile a standalone binary — not required for running from source.
 
 ### 4. Optional — install plugin dependencies
 
@@ -219,24 +223,84 @@ Without these, the core application runs fine; the affected plugins are simply s
 
 ## Running the Application
 
-From the project root with the virtual environment active:
+### Recommended: One-Click Launchers
+
+The easiest way to run PyChem is to double-click the launcher for your platform. No terminal, no Python knowledge, no setup steps required.
+
+| Platform | File to double-click |
+|----------|----------------------|
+| macOS | `PyChem.command` (in Finder) |
+| Windows | `PyChem.bat`, then use the `PyChem - Launch.lnk` shortcut created on first run |
+
+Both launchers handle everything automatically and follow the same steps:
+
+| Step | What happens |
+|------|-------------|
+| 1 | Checks whether Python 3.10+ is already installed |
+| 2 | **If Python is missing** — installs it automatically: macOS uses Homebrew (asks for your password once); Windows uses `winget` (built into Windows 10/11), falling back to a silent download from python.org |
+| 3 | Creates a PyChem icon shortcut for easy access (first run only) |
+| 4 | Creates an isolated Python virtual environment inside the project folder (`venv/`) so no system packages are touched (first run only) |
+| 5 | Installs all required packages from `requirements.txt` into that venv (first run only) |
+| 6 | Launches PyChem |
+
+> **First run** takes 2–5 minutes while packages download and install. Every run after that starts in seconds — the venv is reused as-is.
+
+> The launchers are provided for your convenience and are the recommended way to get started. If you prefer to manage your Python environment yourself, or if a launcher does not work on your machine, use the manual setup below — it is straightforward and gives you full control.
+
+---
+
+### Manual Setup (all platforms)
+
+#### 1. Install Python 3.10+
+
+- **macOS:** Download from [python.org/downloads](https://www.python.org/downloads/) or run `brew install python@3.12`
+- **Linux:** `sudo apt install python3` (Ubuntu/Debian) or `sudo dnf install python3` (Fedora)
+- **Windows:** Download from [python.org/downloads](https://www.python.org/downloads/) — check "Add Python to PATH" during install
+
+Verify:
+```bash
+python3 --version   # should print 3.10 or newer
+```
+
+#### 2. Clone the repository
+
+```bash
+git clone https://github.com/vijaymasand/PyChem.git
+cd PyChem
+```
+
+#### 3. Create a virtual environment
+
+```bash
+# macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+
+# Windows (cmd)
+python -m venv venv
+venv\Scripts\activate.bat
+```
+
+#### 4. Install dependencies
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+#### 5. Run PyChem
 
 ```bash
 python main.py
 ```
-
-On Windows you can also double-click `run_app.bat` if present.
 
 The first launch generates a 10-year development license automatically. No network access required.
 
 ### Expected startup output
 
 ```
-[PERF] Qt imports: 0.XXXs
 Using PySide6 framework
 Plugin system initialized successfully
-[PERF] MainWindow creation: 0.XXXs
-[PERF] Total startup time: 1.XXXs
 ```
 
 ---
@@ -578,42 +642,6 @@ Drop the file into `plugins/` and restart PyChem, or use **Plugins → Installed
 | `example_visualization_plugin.py` | Template for visualization plugins |
 
 Optional plugins declare their external dependencies in `PluginInfo.dependencies`. If a required package is missing, the plugin is skipped with a warning at startup.
-
----
-
-## Testing
-
-PyChem ships its own test suite that verifies the chemistry core, infrastructure, and services.
-
-```bash
-source venv/bin/activate
-
-# Run all unit test suites
-for t in tests/test_*.py; do python3 "$t"; done
-```
-
-### Test suites
-
-| Suite | What it covers |
-|-------|----------------|
-| `test_protocols.py` | Protocol interface definitions |
-| `test_parallel.py` | ParallelExecutor behavior, spawn safety, fallback |
-| `test_events.py` | EventBus subscribe / publish / unsubscribe |
-| `test_public_api.py` | `import pychem` without Qt, `parse_smiles`, `ServiceRegistry` |
-| `test_mmff94_parameters.py` | Bond / angle / torsion / VdW / BCI parameter lookups |
-| `test_hydrogen_adder.py` | H addition for water, methane, ethanol, PDB inference |
-| `test_angle_bending.py` | Angle energy and analytical gradient vs numerical |
-| `test_torsion.py` | Torsion energy and analytical gradient vs numerical, butane staggered vs eclipsed |
-| `test_mmff94_service.py` | Full MMFF94 pipeline on ethanol, benzene, water |
-| `test_parallel_projection.py` | Parallel projection / depth sort / culling equivalence |
-| `test_descriptor_service.py` | Descriptor calculation and batch parallel |
-| `test_conformer_generation.py` | Parallel conformer search |
-
-All 12 suites are expected to pass. CI should reject any PR that breaks them.
-
-### Development / debugging scripts
-
-The `testing/` directory contains one-off development scripts (AM1 performance, color dialog tests, cartoon debugging). These are not part of the regular test run but are useful when diagnosing issues.
 
 ---
 

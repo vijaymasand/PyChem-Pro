@@ -204,7 +204,6 @@ def _generate_simplified_mesh(planes: List[PeptidePlane], spline_steps: int, pro
         return generate_chain_mesh_vectorized(planes, spline_steps, profile_detail)
     
     # For large proteins, use progressive sampling
-    print(f"[Performance] Large protein detected ({n_planes} planes), using simplified mesh generation")
     
     # Sample every N-th plane to reduce complexity
     SAMPLE_RATE = max(1, n_planes // 100)  # Sample at most 100 planes

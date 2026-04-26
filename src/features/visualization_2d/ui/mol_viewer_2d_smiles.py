@@ -447,7 +447,7 @@ class MolViewer2DSMILES(QWidget):
             if atom_idx >= 0 and atom_idx in screen_coords:
                 x, y = screen_coords[atom_idx]
                 painter.setPen(QPen(QColor(255, 200, 0), 2))  # Orange highlight
-                painter.setBrush(QBrush(QColor(255, 200, 0, 50))  # Semi-transparent
+                painter.setBrush(QBrush(QColor(255, 200, 0, 50)))  # Semi-transparent
                 painter.drawEllipse(QPointF(x, y), 8, 8)
         
         # Draw selection for virtual atoms
@@ -456,7 +456,7 @@ class MolViewer2DSMILES(QWidget):
             if virtual_idx in screen_coords:
                 x, y = screen_coords[virtual_idx]
                 painter.setPen(QPen(QColor(255, 200, 0), 1))  # Thinner for virtual
-                painter.setBrush(QBrush(QColor(255, 200, 0, 30))  # More transparent
+                painter.setBrush(QBrush(QColor(255, 200, 0, 30)))  # More transparent
                 painter.drawEllipse(QPointF(x, y), 6, 6)  # Smaller for virtual
     
     def _transform_to_screen(self):

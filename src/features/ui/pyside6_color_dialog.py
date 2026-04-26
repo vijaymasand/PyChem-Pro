@@ -7,7 +7,8 @@ Uses PySide6 components instead of tkinter for better integration.
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QTabWidget, QWidget, QFrame,
-    QButtonGroup, QRadioButton, QMessageBox, QColorDialog
+    QButtonGroup, QRadioButton, QMessageBox, QColorDialog,
+    QScrollArea, QGridLayout
 )
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtCore import Qt, Signal
@@ -30,8 +31,8 @@ class PySide6ColorDialog(QDialog):
     def init_ui(self):
         """Initialize UI."""
         self.setWindowTitle("Color Selection")
-        self.setMinimumSize(800, 700)  # Allow resizing
-        self.resize(900, 800)  # Much larger default size
+        self.setMinimumSize(400, 450)  # Compact default
+        self.resize(500, 550)
         
         # Main layout
         layout = QVBoxLayout(self)
@@ -168,6 +169,10 @@ class PySide6ColorDialog(QDialog):
     
     def create_atoms_tab(self):
         """Create atoms color tab."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
@@ -176,72 +181,83 @@ class PySide6ColorDialog(QDialog):
         title.setStyleSheet("""
             font-size: 14px; 
             font-weight: bold; 
-            margin: 8px;
+            margin: 4px;
             color: #000;
             background-color: #f0f0f0;
-            padding: 10px;
-            border: 2px solid #333;
-            border-radius: 5px;
+            padding: 8px;
+            border: 1px solid #aaa;
+            border-radius: 4px;
         """)
         layout.addWidget(title)
         
-        # Atom color buttons
+        # Grid layout for atoms
+        grid = QGridLayout()
+        layout.addLayout(grid)
+        
         atoms = ["C", "H", "O", "N", "S", "P", "F", "Cl", "Br", "I"]
         
-        for atom in atoms:
+        for i, atom in enumerate(atoms):
             atom_layout = QHBoxLayout()
-            layout.addLayout(atom_layout)
+            atom_layout.setContentsMargins(2, 2, 2, 2)
             
             # Atom label
             atom_label = QLabel(atom)
-            atom_label.setMinimumWidth(80)
-            atom_label.setStyleSheet("background-color: white; color: black; font-size: 20px; font-weight: bold; padding: 10px; border: 2px solid black;")
+            atom_label.setMinimumWidth(30)
+            atom_label.setAlignment(Qt.AlignCenter)
+            atom_label.setStyleSheet("background-color: white; color: black; font-size: 14px; font-weight: bold; padding: 4px; border: 1px solid #777; border-radius: 4px;")
             atom_layout.addWidget(atom_label)
             
             # Color preview
             color_preview = QLabel()
             color_preview.setStyleSheet("""
                 QLabel {
-                    border: 2px solid #333;
+                    border: 1px solid #777;
                     background-color: white;
-                    width: 60px;
-                    height: 30px;
-                    border-radius: 4px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }
             """)
             atom_layout.addWidget(color_preview)
             
             # Color button
-            color_btn = QPushButton("Choose Color")
+            color_btn = QPushButton("Color")
             color_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #2196F3;
                     color: white;
                     border: none;
-                    padding: 8px 16px;
+                    padding: 4px 8px;
                     font-size: 11px;
                     font-weight: bold;
-                    border-radius: 5px;
-                    min-width: 120px;
+                    border-radius: 3px;
+                    min-width: 60px;
                 }
-                QPushButton:hover {
-                    background-color: #1976D2;
-                }
-                QPushButton:pressed {
-                    background-color: #0D47A1;
-                }
+                QPushButton:hover { background-color: #1976D2; }
+                QPushButton:pressed { background-color: #0D47A1; }
             """)
             color_btn.clicked.connect(lambda checked, a=atom, preview=color_preview: self.choose_atom_color(a, preview))
             atom_layout.addWidget(color_btn)
             
             # Store references
             self.color_buttons[f'atom_{atom.lower()}'] = color_preview
+            
+            row = i % 5
+            col = i // 5
+            grid.addLayout(atom_layout, row, col)
         
         layout.addStretch()
-        self.tab_widget.addTab(tab, "Atoms")
+        scroll.setWidget(tab)
+        self.tab_widget.addTab(scroll, "Atoms")
     
     def create_spheres_tab(self):
         """Create spheres color tab."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
@@ -250,32 +266,35 @@ class PySide6ColorDialog(QDialog):
         title.setStyleSheet("""
             font-size: 14px; 
             font-weight: bold; 
-            margin: 8px;
+            margin: 4px;
             color: #000;
             background-color: #f0f0f0;
-            padding: 10px;
-            border: 2px solid #333;
-            border-radius: 5px;
+            padding: 8px;
+            border: 1px solid #aaa;
+            border-radius: 4px;
         """)
         layout.addWidget(title)
         
-        # Sphere color buttons
+        # Grid layout for spheres
+        grid = QGridLayout()
+        layout.addLayout(grid)
+        
         spheres = ["default", "com", "centroid", "custom"]
         
-        for sphere in spheres:
+        for i, sphere in enumerate(spheres):
             sphere_layout = QHBoxLayout()
-            layout.addLayout(sphere_layout)
+            sphere_layout.setContentsMargins(2, 2, 2, 2)
             
             # Sphere label
             sphere_label = QLabel(f"{sphere.capitalize()}:")
             sphere_label.setStyleSheet("""
                 font-weight: bold; 
-                width: 80px;
+                width: 60px;
                 color: #000;
                 font-size: 12px;
                 background-color: #fff;
-                padding: 5px;
-                border: 1px solid #333;
+                padding: 4px;
+                border: 1px solid #777;
                 border-radius: 3px;
             """)
             sphere_layout.addWidget(sphere_label)
@@ -284,46 +303,53 @@ class PySide6ColorDialog(QDialog):
             color_preview = QLabel()
             color_preview.setStyleSheet("""
                 QLabel {
-                    border: 2px solid #333;
+                    border: 1px solid #777;
                     background-color: white;
-                    width: 60px;
-                    height: 30px;
-                    border-radius: 4px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }
             """)
             sphere_layout.addWidget(color_preview)
             
             # Color button
-            color_btn = QPushButton("Choose Color")
+            color_btn = QPushButton("Color")
             color_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #2196F3;
                     color: white;
                     border: none;
-                    padding: 8px 16px;
+                    padding: 4px 8px;
                     font-size: 11px;
                     font-weight: bold;
-                    border-radius: 5px;
-                    min-width: 120px;
+                    border-radius: 3px;
+                    min-width: 60px;
                 }
-                QPushButton:hover {
-                    background-color: #1976D2;
-                }
-                QPushButton:pressed {
-                    background-color: #0D47A1;
-                }
+                QPushButton:hover { background-color: #1976D2; }
+                QPushButton:pressed { background-color: #0D47A1; }
             """)
             color_btn.clicked.connect(lambda checked, s=sphere, preview=color_preview: self.choose_sphere_color(s, preview))
             sphere_layout.addWidget(color_btn)
             
             # Store references
             self.color_buttons[f'sphere_{sphere}'] = color_preview
+            
+            row = i % 2
+            col = i // 2
+            grid.addLayout(sphere_layout, row, col)
         
         layout.addStretch()
-        self.tab_widget.addTab(tab, "Spheres")
+        scroll.setWidget(tab)
+        self.tab_widget.addTab(scroll, "Spheres")
     
     def create_bonds_tab(self):
         """Create bonds/sticks color tab."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
@@ -332,32 +358,35 @@ class PySide6ColorDialog(QDialog):
         title.setStyleSheet("""
             font-size: 14px; 
             font-weight: bold; 
-            margin: 8px;
+            margin: 4px;
             color: #000;
             background-color: #f0f0f0;
-            padding: 10px;
-            border: 2px solid #333;
-            border-radius: 5px;
+            padding: 8px;
+            border: 1px solid #aaa;
+            border-radius: 4px;
         """)
         layout.addWidget(title)
         
-        # Bond color buttons
+        # Grid layout for bonds
+        grid = QGridLayout()
+        layout.addLayout(grid)
+        
         bonds = ["default", "single", "double", "triple", "selected", "highlight"]
         
-        for bond in bonds:
+        for i, bond in enumerate(bonds):
             bond_layout = QHBoxLayout()
-            layout.addLayout(bond_layout)
+            bond_layout.setContentsMargins(2, 2, 2, 2)
             
             # Bond label
             bond_label = QLabel(f"{bond.capitalize()}:")
             bond_label.setStyleSheet("""
                 font-weight: bold; 
-                width: 80px;
+                width: 60px;
                 color: #000;
                 font-size: 12px;
                 background-color: #fff;
-                padding: 5px;
-                border: 1px solid #333;
+                padding: 4px;
+                border: 1px solid #777;
                 border-radius: 3px;
             """)
             bond_layout.addWidget(bond_label)
@@ -366,43 +395,46 @@ class PySide6ColorDialog(QDialog):
             color_preview = QLabel()
             color_preview.setStyleSheet("""
                 QLabel {
-                    border: 2px solid #333;
+                    border: 1px solid #777;
                     background-color: white;
-                    width: 60px;
-                    height: 30px;
-                    border-radius: 4px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }
             """)
             bond_layout.addWidget(color_preview)
             
             # Color button
-            color_btn = QPushButton("Choose Color")
+            color_btn = QPushButton("Color")
             color_btn.setStyleSheet("""
                 QPushButton {
                     background-color: #2196F3;
                     color: white;
                     border: none;
-                    padding: 8px 16px;
+                    padding: 4px 8px;
                     font-size: 11px;
                     font-weight: bold;
-                    border-radius: 5px;
-                    min-width: 120px;
+                    border-radius: 3px;
+                    min-width: 60px;
                 }
-                QPushButton:hover {
-                    background-color: #1976D2;
-                }
-                QPushButton:pressed {
-                    background-color: #0D47A1;
-                }
+                QPushButton:hover { background-color: #1976D2; }
+                QPushButton:pressed { background-color: #0D47A1; }
             """)
             color_btn.clicked.connect(lambda checked, b=bond, preview=color_preview: self.choose_bond_color(b, preview))
             bond_layout.addWidget(color_btn)
             
             # Store references
             self.color_buttons[f'stick_{bond}'] = color_preview
+            
+            row = i % 3
+            col = i // 3
+            grid.addLayout(bond_layout, row, col)
         
         layout.addStretch()
-        self.tab_widget.addTab(tab, "Sticks")
+        scroll.setWidget(tab)
+        self.tab_widget.addTab(scroll, "Sticks")
     
     def choose_atom_color(self, atom: str, preview: QLabel):
         """Choose color for atom."""
@@ -411,10 +443,13 @@ class PySide6ColorDialog(QDialog):
             hex_color = color.name()
             preview.setStyleSheet(f"""
                 QLabel {{
-                    border: 1px solid #ccc;
+                    border: 1px solid #777;
                     background-color: {hex_color};
-                    width: 50px;
-                    height: 20px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }}
             """)
             self.selected_colors[f'atom_{atom.lower()}'] = hex_color
@@ -426,10 +461,13 @@ class PySide6ColorDialog(QDialog):
             hex_color = color.name()
             preview.setStyleSheet(f"""
                 QLabel {{
-                    border: 1px solid #ccc;
+                    border: 1px solid #777;
                     background-color: {hex_color};
-                    width: 50px;
-                    height: 20px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }}
             """)
             self.selected_colors[f'sphere_{sphere}'] = hex_color
@@ -441,10 +479,13 @@ class PySide6ColorDialog(QDialog):
             hex_color = color.name()
             preview.setStyleSheet(f"""
                 QLabel {{
-                    border: 1px solid #ccc;
+                    border: 1px solid #777;
                     background-color: {hex_color};
-                    width: 50px;
-                    height: 20px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }}
             """)
             self.selected_colors[f'stick_{bond}'] = hex_color
@@ -466,10 +507,13 @@ class PySide6ColorDialog(QDialog):
         for key, preview in self.color_buttons.items():
             preview.setStyleSheet("""
                 QLabel {
-                    border: 1px solid #ccc;
+                    border: 1px solid #777;
                     background-color: white;
-                    width: 50px;
-                    height: 20px;
+                    min-width: 24px;
+                    max-width: 24px;
+                    min-height: 24px;
+                    max-height: 24px;
+                    border-radius: 12px;
                 }
             """)
         
@@ -491,10 +535,7 @@ def apply_pyside6_colors(colors: Dict[str, str]):
     """Apply PySide6 selected colors to theme."""
     try:
         from src.shared.ui.theme import COLORS
-        print(f"DEBUG: Applying PySide6 colors to theme: {colors}")
         COLORS.update(colors)
-        print(f"DEBUG: Successfully applied {len(colors)} PySide6 colors to theme")
     except Exception as e:
-        print(f"ERROR applying PySide6 colors to theme: {e}")
         import traceback
         traceback.print_exc()

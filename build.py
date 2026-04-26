@@ -44,14 +44,18 @@ def build(onefile: bool = True) -> None:
         f"--file-description={DESCRIPTION}",
         "--include-package=src",
         "--include-package=pychem",
-        "--include-data-dir=plugins=plugins",
+        "--include-data-files=plugins/*.py=plugins/",
         "--include-data-dir=assets=assets",
         "--include-qt-plugins=sensible,iconengines,imageformats",
         "--include-module=PySide6.QtSvg",
     ]
 
     if onefile:
-        cmd.append("--onefile")
+        if system == "Darwin":
+            # macOS app bundles are self-contained; onefile breaks .app structure
+            pass
+        else:
+            cmd.append("--onefile")
 
     if system == "Windows":
         cmd.append("--windows-console-mode=disable")

@@ -48,9 +48,13 @@ class PluginManager:
         
         # Set plugins directory
         if plugins_directory is None:
-            # Default to plugins folder in project root
-            project_root = Path(__file__).parent.parent.parent
-            self.plugins_directory = project_root / "plugins"
+            # In a Nuitka-compiled app, data files sit next to the executable
+            exe_dir = Path(sys.executable).parent
+            if (exe_dir / "plugins").exists():
+                self.plugins_directory = exe_dir / "plugins"
+            else:
+                project_root = Path(__file__).parent.parent.parent
+                self.plugins_directory = project_root / "plugins"
         else:
             self.plugins_directory = Path(plugins_directory)
         

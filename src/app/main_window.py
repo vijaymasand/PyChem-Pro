@@ -150,11 +150,21 @@ class MainWindow(QMainWindow):
         """Initialize the plugin system."""
         try:
             self.plugin_interface = PluginInterface(self)
-            self.plugin_interface.initialize_plugin_system()
-            print("Plugin system initialized successfully")
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self._delayed_init_plugin_system)
+        except Exception as e:
+            print(f"Error preparing plugin system: {e}")
+            self.plugin_interface = None
+
+    def _delayed_init_plugin_system(self):
+        """Perform the heavy plugin discovery after the main event loop has started."""
+        try:
+            if self.plugin_interface:
+                self.plugin_interface.initialize_plugin_system()
+                self._refresh_plugin_list()
+                self._refresh_plugin_tabs()
         except Exception as e:
             print(f"Error initializing plugin system: {e}")
-            self.plugin_interface = None
 
     # ── Central widget ───────────────────────────────────────────
 

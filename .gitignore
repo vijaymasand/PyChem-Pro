@@ -4,7 +4,10 @@ testing/
 tests/
 
 Prompts.txt
-*.bat
+.launcher_icon_set
+linkedin_article.txt
+run_app.bat
+
 *.mol2
 *.pdb
 *.pyc
@@ -20,7 +23,9 @@ graphify-out/
 Claude.md
 .claude
 
-dist/
+dist/*
+!dist/*.dmg
+*.lnk
 build/
 *.build/
 *.dist/

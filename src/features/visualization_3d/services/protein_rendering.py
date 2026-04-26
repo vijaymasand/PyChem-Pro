@@ -463,7 +463,7 @@ def render_protein_cartoon(painter, molecule: Molecule,
     t0_total = time.time()
     
     # Antialiasing scale factor for smooth rendering
-    scale_factor = 2  # 2x supersampling for antialiasing
+    scale_factor = 1 if is_interacting else 2  # 2x supersampling for static view
     
     # EARLY CACHE CHECK — skip ALL math if camera hasn't changed
     cache_key = (id(molecule), round(rot_x, 4), round(rot_y, 4), round(rot_z, 4),
@@ -476,12 +476,11 @@ def render_protein_cartoon(painter, molecule: Molecule,
         return
     
     # 1. Get the cached 3D mesh with higher quality for smooth rendering
-    current_steps = 8 if is_interacting else 24  # Increased for smoother curves
-    current_profile = 8 if is_interacting else 16  # Increased for better detail
+    current_steps = 3 if is_interacting else 24  # Reduced for fast interaction
+    current_profile = 4 if is_interacting else 16  # Reduced for fast interaction
     
     t0_mesh = time.time()
     vertices, triangles, colors = _cartoon_gen.get_mesh(molecule, spline_steps=current_steps, profile_detail=current_profile)
-    print(f"[Timing] Mesh: {(time.time()-t0_mesh)*1000:.0f}ms")
     
     if vertices is None or len(vertices) == 0:
         return
@@ -749,7 +748,6 @@ def render_protein_cartoon(painter, molecule: Molecule,
     
     draw_ms = (time.time()-t0_draw)*1000
     total_ms = (time.time()-t0_total)*1000
-    print(f"[Performance] Draw: {draw_ms:.0f}ms, Total: {total_ms:.0f}ms, {N} tri ({'interactive' if is_interacting else 'static'})")
 
 
 

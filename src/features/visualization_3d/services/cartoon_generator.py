@@ -62,7 +62,6 @@ def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None):
     # Performance logging
     import time
     start_time = time.perf_counter()
-    print(f"[Performance] Starting mesh generation for {len(molecule.atoms)} atoms")
 
     # 1. Extract peptide planes per chain
     chains_data = compute_chain_planes(molecule)
@@ -113,8 +112,6 @@ def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None):
     # Performance timing
     end_time = time.perf_counter()
     mesh_time = end_time - start_time
-    print(f"[Performance] Mesh generation completed in {mesh_time:.2f}s")
-    print(f"[Performance] Generated {len(all_vertices)} vertices, {len(all_triangles)} triangles")
     
     return all_vertices, all_triangles, all_colors
 

@@ -251,7 +251,6 @@ class KdeDensityMap:
                 self.thresholds[RegionType.FAVORED] = max_log - 1.0
                 self.thresholds[RegionType.ALLOWED] = max_log - 2.5
                 self.thresholds[RegionType.GENEROUS] = max_log - 4.5
-                print(f"Ramachandran KDE: Max density {max_log:.2f}. Thresholds shifted: {self.thresholds}")
         except Exception as e:
             raise RuntimeError(f"Failed to load KDE: {e}")
     

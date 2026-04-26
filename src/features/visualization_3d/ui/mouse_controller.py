@@ -57,7 +57,9 @@ class MouseController:
         if v._mouse_button == Qt.MouseButton.LeftButton:
             v.rot_y += dx * 0.5
             v.rot_x += dy * 0.5
-            if abs(dx) > 1 or abs(dy) > 1: v._has_dragged = True
+            if abs(dx) > 1 or abs(dy) > 1:
+                v._has_dragged = True
+                v._is_interacting = True
         elif v._mouse_button == Qt.MouseButton.RightButton:
             cx = v.width() / 2.0
             cy = v.height() / 2.0
@@ -68,11 +70,15 @@ class MouseController:
             elif angle_diff < -math.pi: angle_diff += 2 * math.pi
             if not hasattr(v, 'rot_z'): v.rot_z = 0.0
             v.rot_z -= math.degrees(angle_diff)
-            if abs(dx) > 1 or abs(dy) > 1: v._has_dragged = True
+            if abs(dx) > 1 or abs(dy) > 1:
+                v._has_dragged = True
+                v._is_interacting = True
         elif v._mouse_button == Qt.MouseButton.MiddleButton:
             v.pan_x += dx
             v.pan_y += dy
-            if abs(dx) > 1 or abs(dy) > 1: v._has_dragged = True
+            if abs(dx) > 1 or abs(dy) > 1:
+                v._has_dragged = True
+                v._is_interacting = True
 
         v._last_mouse_pos = event.position()
         v.update()
@@ -136,6 +142,9 @@ class MouseController:
 
         v._last_mouse_pos = None
         v._mouse_button = None
+        if getattr(v, '_is_interacting', False):
+            v._is_interacting = False
+            v.update()
 
     def handle_wheel(self, event: QWheelEvent):
         v = self._v
@@ -143,7 +152,16 @@ class MouseController:
         factor = 1.1 if delta > 0 else 0.9
         v.zoom *= factor
         v.zoom = max(5, min(200, v.zoom))
+        v._is_interacting = True
         v.update()
+        # Reset after a short delay since wheel events don't have a release event
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(200, lambda: self._reset_interaction(v))
+
+    def _reset_interaction(self, v):
+        if getattr(v, '_is_interacting', False):
+            v._is_interacting = False
+            v.update()
 
     def handle_key_press(self, event):
         """Handle keyboard shortcuts -- Delete key removes selected atoms."""

@@ -250,10 +250,12 @@ class ProteinColorDialog(QDialog):
         for key, value in self.current_colors.items():
             THEME_COLORS[key] = value
             
-        # CRITICAL: Invalidate the cartoon mesh cache so the new colors take effect
+        # CRITICAL: Invalidate both the mesh cache and image cache so the new colors take effect
         try:
-            from src.features.visualization_3d.services.protein_rendering import _cartoon_gen
+            from src.features.visualization_3d.services.protein_rendering import _cartoon_gen, render_protein_cartoon
             _cartoon_gen.invalidate()
+            if hasattr(render_protein_cartoon, '_img_cache'):
+                render_protein_cartoon._img_cache.clear()
         except ImportError:
             pass
         

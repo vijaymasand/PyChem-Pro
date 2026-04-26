@@ -315,30 +315,17 @@ def show_color_dialog(window):
     try:
         from src.features.ui.pyside6_color_dialog import show_pyside6_color_dialog, apply_pyside6_colors
 
-        print("DEBUG: Opening PySide6 color dialog...")
-
         selected_colors = show_pyside6_color_dialog(window)
 
-        print(f"DEBUG: Selected colors from PySide6 GUI: {selected_colors}")
-
         if selected_colors:
-            print("DEBUG: Applying colors to theme...")
-
             apply_pyside6_colors(selected_colors)
-
-            print("DEBUG: Updating 3D viewer...")
-
             update_atom_colors(window, selected_colors)
 
             color_count = len(selected_colors)
-            window.status_bar.showMessage(f"Applied {color_count} GUI colors")
-            print(f"DEBUG: Successfully applied {color_count} colors")
         else:
             window.status_bar.showMessage("Color selection cancelled")
-            print("DEBUG: Color selection cancelled")
 
     except Exception as e:
-        print(f"ERROR in color dialog: {e}")
         import traceback
         traceback.print_exc()
         window.status_bar.showMessage(f"Color dialog error: {str(e)}")
@@ -382,15 +369,9 @@ def show_protein_color_dialog(window):
     try:
         from src.features.visualization_3d.ui.protein_color_dialog import show_protein_color_dialog as _show
 
-        print("DEBUG: Opening protein color dialog...")
-
         selected_colors = _show(window)
 
         if selected_colors:
-            print(f"DEBUG: Selected colors: {selected_colors}")
-
-            print("DEBUG: Forcing viewer repaint...")
-
             if hasattr(window.viewer_3d, 'repaint'):
                 window.viewer_3d.repaint()
 
@@ -413,7 +394,6 @@ def show_protein_color_dialog(window):
             window.status_bar.showMessage("Protein color selection cancelled")
 
     except Exception as e:
-        print(f"ERROR in protein color dialog: {e}")
         import traceback
         traceback.print_exc()
         window.status_bar.showMessage(f"Protein color dialog error: {str(e)}")
@@ -422,44 +402,30 @@ def show_protein_color_dialog(window):
 def update_atom_colors(window, colors):
     """Update atom colors in 3D viewer."""
     try:
-        print(f"DEBUG: _update_atom_colors called with colors: {colors}")
-
         if not window.molecule:
-            print("DEBUG: No molecule loaded for color update")
             return
 
-        print("DEBUG: Available methods in viewer_3d:")
-        if hasattr(window.viewer_3d, '__dict__'):
-            methods = [method for method in dir(window.viewer_3d) if not method.startswith('_')]
-            print(f"DEBUG: Viewer methods: {methods[:10]}...")
-
-        print("DEBUG: Updating atom element colors directly...")
         for atom in window.molecule.atoms:
             element_symbol = atom.element.symbol.lower()
             color_key = f'atom_{element_symbol}'
 
             if color_key in colors:
                 new_color = colors[color_key]
-                print(f"DEBUG: Updating {atom.element.symbol} color from {atom.element.color} to {new_color}")
-
                 atom.element.color = new_color
 
                 from src.shared.ui.theme import COLORS
                 COLORS[color_key] = new_color
 
-        print("DEBUG: Updating sphere and stick colors...")
         from src.shared.ui.theme import COLORS
 
         sphere_keys = ['sphere_default', 'sphere_com', 'sphere_centroid', 'sphere_custom']
         for key in sphere_keys:
             if key in colors:
                 COLORS[key] = colors[key]
-                print(f"DEBUG: Updated sphere color {key} to {colors[key]}")
 
         sphere_colors_selected = any(key in colors for key in sphere_keys)
 
         if window.molecule and sphere_colors_selected:
-            print("DEBUG: Creating specific dummy spheres (sphere colors selected)...")
             try:
                 from src.features.visualization_3d.services.dummy_sphere import DummySphere
                 import numpy as np
@@ -484,7 +450,6 @@ def update_atom_colors(window, colors):
                                 label="Default"
                             )
                             window.molecule.dummy_spheres.append(default_sphere)
-                            print("DEBUG: Created default sphere")
 
                         if 'sphere_com' in colors:
                             com_sphere = DummySphere(
@@ -494,7 +459,6 @@ def update_atom_colors(window, colors):
                                 label="COM"
                             )
                             window.molecule.dummy_spheres.append(com_sphere)
-                            print("DEBUG: Created COM sphere")
 
                         if 'sphere_centroid' in colors:
                             centroid_sphere = DummySphere(
@@ -504,89 +468,66 @@ def update_atom_colors(window, colors):
                                 label="Centroid"
                             )
                             window.molecule.dummy_spheres.append(centroid_sphere)
-                            print("DEBUG: Created centroid sphere")
 
                         if hasattr(window.viewer_3d, 'set_molecule'):
-                            print("DEBUG: Re-setting molecule to trigger sphere rendering")
                             window.viewer_3d.set_molecule(window.molecule)
             except Exception as e:
-                print(f"DEBUG: Could not create test sphere: {e}")
+                pass
 
         stick_keys = ['stick_default', 'stick_single', 'stick_double', 'stick_triple', 'stick_selected', 'stick_highlight']
         for key in stick_keys:
             if key in colors:
                 COLORS[key] = colors[key]
-                print(f"DEBUG: Updated stick color {key} to {colors[key]}")
 
         if hasattr(window.viewer_3d, 'sphere_scale'):
-            print("DEBUG: Viewer has sphere scale, checking for color settings")
             for key, value in colors.items():
                 if hasattr(window.viewer_3d, key):
                     setattr(window.viewer_3d, key, value)
-                    print(f"DEBUG: Set viewer.{key} = {value}")
-
-        print("DEBUG: Forcing viewer re-render with updated atom colors...")
 
         if hasattr(window.viewer_3d, 'update_atom_colors'):
-            print("DEBUG: Using viewer_3d.update_atom_colors")
             window.viewer_3d.update_atom_colors(colors)
 
         elif hasattr(window.viewer_3d, 'set_colors'):
-            print("DEBUG: Using viewer_3d.set_colors")
             window.viewer_3d.set_colors(colors)
 
         elif hasattr(window.viewer_3d, 'color_atoms'):
-            print("DEBUG: Using viewer_3d.color_atoms")
             window.viewer_3d.color_atoms(colors)
 
         elif hasattr(window.viewer_3d, 'update_colors'):
-            print("DEBUG: Using viewer_3d.update_colors")
             window.viewer_3d.update_colors(colors)
 
         else:
-            print("DEBUG: Using force refresh method")
-
             if hasattr(window.viewer_3d, 'COLORS'):
-                print("DEBUG: Refreshing viewer COLORS from theme")
                 from src.shared.ui.theme import COLORS as _COLORS
                 window.viewer_3d.COLORS.update(_COLORS)
 
             if hasattr(window.viewer_3d, 'set_molecule'):
-                print("DEBUG: Using viewer_3d.set_molecule to force re-render")
                 window.viewer_3d.set_molecule(window.molecule)
 
-            print("DEBUG: Forcing viewer refresh")
+            if hasattr(window.viewer_3d, '_renderer') and hasattr(window.viewer_3d._renderer, 'invalidate_cache'):
+                window.viewer_3d._renderer.invalidate_cache()
 
             if hasattr(window.viewer_3d, 'update'):
-                print("DEBUG: Using viewer_3d.update")
                 window.viewer_3d.update()
 
             if hasattr(window.viewer_3d, 'repaint'):
-                print("DEBUG: Using viewer_3d.repaint")
                 window.viewer_3d.repaint()
 
             if hasattr(window.viewer_3d, 'refresh'):
-                print("DEBUG: Using viewer_3d.refresh")
                 window.viewer_3d.refresh()
 
             if hasattr(window.viewer_3d, 'redraw'):
-                print("DEBUG: Using viewer_3d.redraw")
                 window.viewer_3d.redraw()
 
             if hasattr(window.viewer_3d, 'paintEvent'):
-                print("DEBUG: Forcing paintEvent")
                 try:
                     window.viewer_3d.paintEvent(QPaintEvent())
                 except Exception:
                     pass
 
             if hasattr(window.viewer_3d, 'updateGeometry'):
-                print("DEBUG: Using viewer_3d.updateGeometry")
                 window.viewer_3d.updateGeometry()
 
-        print("DEBUG: Color update completed")
-
     except Exception as e:
-        print(f"ERROR in _update_atom_colors: {e}")
         import traceback
         traceback.print_exc()

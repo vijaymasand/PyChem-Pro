@@ -27,7 +27,6 @@ try:
     from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette
 
     QT_FRAMEWORK = "PySide6"
-    print("Using PySide6 framework")
     
 except ImportError as e:
     print(f"PySide6 import failed: {e}")
