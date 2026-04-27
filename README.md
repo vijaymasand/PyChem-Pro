@@ -1,13 +1,13 @@
 <table border="0" cellpadding="0" cellspacing="0">
   <tr>
-    <td width="96" valign="middle"><img src="assets/icon.svg" alt="PyChem logo" width="80" height="80"></td>
-    <td valign="middle"><h1>PyChem</h1></td>
+    <td width="96" valign="middle"><img src="assets/icon.svg" alt="PyChem-Pro logo" width="80" height="80"></td>
+    <td valign="middle"><h1>PyChem-Pro</h1></td>
   </tr>
 </table>
 
 > A pure-Python desktop application and library for chemistry and cheminformatics — molecular visualization, SMILES parsing, PDB loading, MMFF94 geometry optimization, descriptors, and a plugin ecosystem. No RDKit. No OpenBabel. Everything implemented from scratch.
 
-**Repository:** https://github.com/vijaymasand/PyChem
+**Repository:** https://github.com/vijaymasand/PyChem-Pro
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/vijaymasand)
 
@@ -15,7 +15,7 @@
 
 ## Table of Contents
 
-- [About PyChem](#about-pychem)
+- [About PyChem-Pro](#about-pychem-pro)
 - [Key Features](#key-features)
 - [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
@@ -42,11 +42,11 @@
 
 ---
 
-## About PyChem
+## About PyChem-Pro
 
-PyChem is a desktop chemistry application and Python library that combines molecular visualization (like PyMOL) with cheminformatics primitives (like RDKit). Unlike most tools in the space, PyChem is **pure Python with NumPy**. There is no C++ extension, no RDKit dependency, no OpenBabel binding. Every feature — SMILES parsing, 3D coordinate generation, force field optimization, descriptor calculation, Shrake-Rupley SASA, ring perception, protein cartoon rendering — is implemented from scratch and readable end-to-end.
+PyChem-Pro is a desktop chemistry application and Python library that combines molecular visualization (like PyMOL) with cheminformatics primitives (like RDKit). Unlike most tools in the space, PyChem-Pro is **pure Python with NumPy**. There is no C++ extension, no dependency on any cheminformatics library. Every feature — SMILES parsing, 3D coordinate generation, force field optimization, descriptor calculation, Shrake-Rupley SASA, ring perception, protein cartoon rendering — is implemented from scratch and readable end-to-end.
 
-This makes PyChem:
+This makes PyChem-Pro:
 
 - **Educational.** Graduate students can open any file and see how a real MMFF94 optimizer or a Catmull-Rom ribbon renderer actually works.
 - **Portable.** No compilers. No system libraries beyond Python and Qt. Runs on Windows, macOS, and Linux identically.
@@ -145,7 +145,7 @@ Every subsystem implements a `typing.Protocol` interface (`IForceField`, `IRende
 | Bundler (optional) | Nuitka 2.0+ for producing standalone binaries |
 | Plugin stack (optional) | pandas, scipy, scikit-learn, matplotlib, packaging — only needed if you run plugins that require them |
 
-**No chemistry dependencies.** PyChem does not use RDKit, Open Babel, OEChem, Schrodinger tools, or any other external chemistry library.
+**No chemistry dependencies.** PyChem-Pro does not use any cheminformatics or external chemistry library.
 
 ### Vendored
 
@@ -163,7 +163,7 @@ Every subsystem implements a `typing.Protocol` interface (`IForceField`, `IRende
 
 ### Cross-Platform Notes
 
-PyChem is designed to work identically on Windows, macOS, and Linux. Two design decisions enforce this:
+PyChem-Pro is designed to work identically on Windows, macOS, and Linux. Two design decisions enforce this:
 
 1. **Multiprocessing:** `ProcessPoolExecutor` is always created with the `spawn` start method (`multiprocessing.get_context('spawn')`). This avoids `fork()`-related crashes on macOS (Qt + CoreFoundation assertion) and matches the only option available on Windows.
 2. **File paths:** All path handling uses `os.path` or `pathlib` — no hard-coded separators.
@@ -176,8 +176,8 @@ PyChem is designed to work identically on Windows, macOS, and Linux. Two design 
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/vijaymasand/PyChem.git
-cd PyChem
+git clone https://github.com/vijaymasand/PyChem-Pro.git
+cd PyChem-Pro
 ```
 
 ### 2. Create a virtual environment
@@ -216,7 +216,7 @@ Build tools (Nuitka, dmgbuild) are in `requirements-build.txt` and only needed i
 The built-in plugins in `plugins/` have optional dependencies. Install them only if you plan to use those plugins:
 
 ```bash
-pip install packaging pandas scipy scikit-learn matplotlib
+pip install packaging pandas scipy scikit-learn matplotlib rdkit
 ```
 
 Without these, the core application runs fine; the affected plugins are simply skipped at startup with a warning.
@@ -227,7 +227,7 @@ Without these, the core application runs fine; the affected plugins are simply s
 
 ### Recommended: One-Click Launchers
 
-The easiest way to run PyChem is to double-click the launcher for your platform. No terminal, no Python knowledge, no setup steps required.
+The easiest way to run PyChem-Pro is to double-click the launcher for your platform. No terminal, no Python knowledge, no setup steps required.
 
 | Platform | File to double-click |
 |----------|----------------------|
@@ -240,7 +240,7 @@ Both launchers handle everything automatically and follow the same steps:
 |------|-------------|
 | 1 | Checks whether Python 3.10+ is already installed |
 | 2 | **If Python is missing** — installs it automatically: macOS uses Homebrew (asks for your password once); Windows uses `winget` (built into Windows 10/11), falling back to a silent download from python.org |
-| 3 | Creates a PyChem icon shortcut for easy access (first run only) |
+| 3 | Creates a PyChem-Pro icon shortcut for easy access (first run only) |
 | 4 | Creates an isolated Python virtual environment inside the project folder (`venv/`) so no system packages are touched (first run only) |
 | 5 | Installs all required packages from `requirements.txt` into that venv (first run only) |
 | 6 | Launches PyChem |
@@ -267,8 +267,8 @@ python3 --version   # should print 3.10 or newer
 #### 2. Clone the repository
 
 ```bash
-git clone https://github.com/vijaymasand/PyChem.git
-cd PyChem
+git clone https://github.com/vijaymasand/PyChem-Pro.git
+cd PyChem-Pro
 ```
 
 #### 3. Create a virtual environment
@@ -290,7 +290,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-#### 5. Run PyChem
+#### 5. Run PyChem-Pro
 
 ```bash
 python main.py
@@ -309,7 +309,7 @@ Plugin system initialized successfully
 
 ## Quick Start — Python API
 
-PyChem provides a public package at the top level (`pychem/`) that does not require PySide6 to be imported. You can use it in Jupyter notebooks or scripts.
+PyChem-Pro provides a public package at the top level (`pychem/`) that does not require PySide6 to be imported. You can use it in Jupyter notebooks or scripts.
 
 ```python
 import pychem
@@ -495,7 +495,7 @@ The class does not need to inherit from anything — `typing.Protocol` uses stru
 
 ## MMFF94 Force Field
 
-PyChem ships a pure-Python implementation of the Merck Molecular Force Field (MMFF94). It is simplified relative to the full 75K+ rule set but covers standard organic chemistry:
+PyChem-Pro ships a pure-Python implementation of the Merck Molecular Force Field (MMFF94). At present, it is not perfect. It is simplified relative to the full 75K+ rule set but covers standard organic chemistry:
 
 | Term | Implementation |
 |------|----------------|
@@ -584,7 +584,7 @@ All worker functions are **module-level** (required by the `spawn` start method 
 
 ## Plugins
 
-PyChem has a first-class plugin system. Plugins appear as dockable panels in the GUI and can subscribe to molecule-changed events.
+PyChem-Pro has a first-class plugin system. Plugins appear as dockable panels in the GUI and can subscribe to molecule-changed events.
 
 ### Minimal plugin
 
@@ -653,7 +653,7 @@ Optional plugins declare their external dependencies in `PluginInfo.dependencies
 
 - **Style.** Follow PEP 8, 4-space indentation, max 100 chars per line.
 - **Typing.** Use `typing.Protocol` for service interfaces, dataclasses for DTOs, and type hints everywhere reasonable.
-- **No chemistry dependencies.** Absolutely no RDKit, Open Babel, or similar libraries. NumPy is the only permitted numerical dependency.
+- **No chemistry dependencies.** NumPy is the only permitted numerical dependency.
 - **Module-level functions for multiprocessing.** Any function passed to `ParallelExecutor.map` must be defined at module scope (required by the `spawn` start method).
 - **Cross-platform paths.** Use `os.path` or `pathlib`. Never hard-code `/` or `\`.
 - **Large files.** Keep individual Python files under ~800 lines. If a file grows beyond that, split it into focused modules.
@@ -744,7 +744,7 @@ See `docs/` for detailed specs and implementation plans.
 
 ## License
 
-PyChem is licensed under the **[Polyform Noncommercial License 1.0.0](LICENSE)**.
+PyChem-Pro is licensed under the **[Polyform Noncommercial License 1.0.0](LICENSE)**.
 
 Copyright (c) 2026 Vijay Masand and Gaurav Masand
 
@@ -759,11 +759,11 @@ Vendored OASA code retains its original BSD-style license.
 
 ## Citation
 
-If you use PyChem in academic work, please cite:
+If you use PyChem-Pro in academic work, please cite:
 
 ```
 @software{pychem,
-  title   = {PyChem: A Pure-Python Cheminformatics and Molecular Visualization Toolkit},
+  title   = {PyChem-Pro: A Pure-Python Cheminformatics and Molecular Visualization Toolkit},
   author  = {Masand, Gaurav and Masand, Vijay},
   year    = {2026},
   url     = {https://github.com/vijaymasand/PyChem},
@@ -786,7 +786,7 @@ A proper DOI will be issued once the first tagged release is published.
 
 ## Contact
 
-- GitHub: https://github.com/vijaymasand/PyChem
-- Issues: https://github.com/vijaymasand/PyChem/issues
+- GitHub: https://github.com/vijaymasand/PyChem-Pro
+- Issues: https://github.com/vijaymasand/PyChem-Pro/issues
 
 Questions, feedback, and pull requests are welcome.
