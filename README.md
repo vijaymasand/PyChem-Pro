@@ -749,7 +749,7 @@ PyChem-Pro is licensed under the **[Polyform Noncommercial License 1.0.0](LICENS
 Copyright (c) 2026 Vijay Masand and Gaurav Masand
 
 - **Personal and educational use** — free to use, modify, and distribute.
-- **Commercial use** — strictly prohibited. This includes using PyChem as part of a paid service, distributing it for a fee, or relying on it to generate revenue.
+- **Commercial use** — strictly prohibited. This includes using PyChem-Pro as part of a paid service, distributing it for a fee, or relying on it to generate revenue.
 
 See the `LICENSE` file for the full legal text.
 
