@@ -90,14 +90,19 @@ def parse_smiles(smiles, name="", use_bkchem_tokenizer=True):
         idx1 = atom_map[v1]
         idx2 = atom_map[v2]
         
-        # Base type
+        # OASA kekulizes aromatic bonds (sets order to 1 or 2) but
+        # keeps aromatic=True.  We must respect the kekulized order
+        # for proper rendering, and only fall back to AROMATIC when
+        # the order itself is unresolved (order=4).
         btype = BondType.SINGLE
-        if o_e.order == 2:
+        order = getattr(o_e, 'order', 1)
+        if order == 2:
             btype = BondType.DOUBLE
-        elif o_e.order == 3:
+        elif order == 3:
             btype = BondType.TRIPLE
-        elif o_e.aromatic or o_e.order == 4:
+        elif order == 4:
             btype = BondType.AROMATIC
+        # Note: aromatic bonds with order=1 stay SINGLE (kekulized form)
             
         # Stereo
         bstereo = BondStereo.NONE
@@ -107,11 +112,24 @@ def parse_smiles(smiles, name="", use_bkchem_tokenizer=True):
         elif stereo_tag == '\\':
             bstereo = BondStereo.DOWN
             
-        mol.add_bond(idx1, idx2, btype, bstereo)
+        bond_obj = mol.add_bond(idx1, idx2, btype, bstereo)
+        # Preserve aromatic flag for downstream chemistry even though
+        # the bond type is kekulized (single/double)
+        if o_e.aromatic and bond_obj:
+            bond_obj.is_in_ring = True
+    # Perceive atom aromaticity (needed for fingerprinting, descriptors)
+    # but preserve the kekulized bond types from OASA.  perceive_aromaticity
+    # re-marks bonds as AROMATIC, so we save and restore bond types.
+    saved_bond_types = [(b.index, b.bond_type) for b in mol.bonds]
 
     from src.features.smiles_parser.rules.aromaticity import perceive_aromaticity
-    perceive_aromaticity(mol)
     mol.find_rings()
+    perceive_aromaticity(mol)
+
+    # Restore kekulized bond types (single/double from OASA)
+    for bond_idx, btype in saved_bond_types:
+        mol.bonds[bond_idx].bond_type = btype
+
     mol.assign_hybridization()
     
     # Tag source for optimized 2D layout engine selection

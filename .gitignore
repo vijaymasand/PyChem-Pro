@@ -2,20 +2,14 @@
 docs/
 testing/
 tests/
-
+chemcanvas-main/
 Prompts.txt
-.launcher_icon_set
-linkedin_article.txt
-run_app.bat
-
+*.bat
 *.mol2
 *.pdb
 *.pyc
 __pycache__/
 *.sdf
-MLP_Tools/
-
-CPPCartoon/
 graphify-out/
 
 .DS_Store
@@ -23,9 +17,7 @@ graphify-out/
 Claude.md
 .claude
 
-dist/*
-!dist/*.dmg
-*.lnk
+dist/
 build/
 *.build/
 *.dist/

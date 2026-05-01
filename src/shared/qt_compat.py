@@ -21,10 +21,11 @@ try:
         QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, 
         QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem, 
         QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsSimpleTextItem, 
-        QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget
+        QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
+        QGraphicsItem, QToolBar, QDialogButtonBox
     )
-    from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication
-    from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette
+    from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize
+    from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
 
     QT_FRAMEWORK = "PySide6"
     
@@ -44,10 +45,11 @@ except ImportError as e:
             QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, 
             QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem, 
             QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsSimpleTextItem, 
-            QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget
+            QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
+            QGraphicsItem, QToolBar, QDialogButtonBox
         )
-        from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication
-        from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette
+        from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize
+        from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
 
         QT_FRAMEWORK = "PyQt6"
         print("Using PyQt6 framework (PySide6 failed)")
@@ -147,10 +149,28 @@ except ImportError as e:
             def addStretch(self, stretch=0): pass
             def setContentsMargins(self, left, top, right, bottom): pass
             def setSpacing(self, spacing): pass
+        class Signal:
+            def __init__(self, *args): pass
+            def connect(self, slot): pass
+            def emit(self, *args): pass
+        
+        class QObject:
+            def __init__(self): pass
+
         class QGroupBox:
             def __init__(self, title=None, parent=None): pass
             def setTitle(self, title): pass
         
+        class QToolBar:
+            def __init__(self, parent=None): pass
+            def addAction(self, action): pass
+            def addSeparator(self): pass
+            def addWidget(self, widget): pass
+            def setIconSize(self, size): pass
+
+        class QSize:
+            def __init__(self, width=0, height=0): pass
+
         class QSizePolicy:
             def __init__(self): pass
         
@@ -398,6 +418,17 @@ except ImportError as e:
             def set_atom_size(self, size): pass
             def set_color_scheme(self, scheme): pass
         
+        class QDialogButtonBox(QWidget):
+            def __init__(self, buttons=None, parent=None): 
+                super().__init__(parent)
+                self.accepted = self.Signal()
+                self.rejected = self.Signal()
+            class StandardButton:
+                Ok = 1
+                Cancel = 2
+                Save = 4
+                Close = 8
+        
         class QGraphicsView(QWidget):
             def __init__(self, parent=None): super().__init__(parent)
             def setScene(self, scene): pass
@@ -440,6 +471,14 @@ except ImportError as e:
             def addText(self, *args): return QGraphicsTextItem()
             def addWidget(self, *args): return QGraphicsProxyWidget()
             def createItemGroup(self, items): return QGraphicsItemGroup()
+
+        class QStandardPaths:
+            @staticmethod
+            def writableLocation(type): return ""
+            class StandardLocation:
+                DocumentsLocation = 0
+                AppDataLocation = 1
+                TempLocation = 2
 
         class QGraphicsItem:
             def __init__(self, parent=None): pass
@@ -584,7 +623,7 @@ except ImportError as e:
         
         class QPaintEvent:
             def __init__(self, *args): pass
-
+ 
         class QThread:
             def start(self): pass
             def wait(self): pass
@@ -615,13 +654,6 @@ except ImportError as e:
             class StyleHint:
                 Monospace = 0
         
-        class Signal:
-            def __init__(self, *args): pass
-            def connect(self, slot): pass
-            def emit(self, *args): pass
-        
-        class QObject:
-            def __init__(self): pass
         
         class QSettings:
             def __init__(self, *args): pass
@@ -668,7 +700,12 @@ except ImportError as e:
                 SelectAll = "SelectAll"
         
         class QFontMetrics:
-            def __init__(self): pass
+            def __init__(self, font=None): pass
+
+        class QFontMetricsF:
+            def __init__(self, font): pass
+            def height(self): return 12
+            def width(self, text): return len(text) * 8
         
         class QIcon:
             def __init__(self): pass
@@ -715,16 +752,23 @@ except ImportError as e:
             def __init__(self): pass
         
         class QPainterPath:
-            def __init__(self): pass
+            def __init__(self, *args): pass
+            def lineTo(self, *args): pass
         
         class QPointF:
-            def __init__(self): pass
+            def __init__(self, *args): pass
         
         class QRectF:
-            def __init__(self): pass
+            def __init__(self, *args): pass
         
         class QPolygonF:
+            def __init__(self, *args): pass
+
+        class QTransform:
             def __init__(self): pass
+            def scale(self, sx, sy): pass
+            def translate(self, dx, dy): pass
+            def rotate(self, angle): pass
         
         class Qt:
             class WidgetAttribute:
@@ -817,14 +861,15 @@ __all__ = [
     'QKeySequence', 'QFont', 'QIcon', 'QPixmap', 'QPalette', 'QTimer', 'QT_FRAMEWORK',
     'QPainter', 'QColor', 'QPen', 'QBrush', 'QWheelEvent',
     'QRadialGradient', 'QLinearGradient', 'QImage', 'QConicalGradient', 
-    'QPainterPath', 'QPointF', 'QRectF', 'QFontMetrics', 'QSizePolicy',
-    'QSlider', 'QTextCursor', 'QPolygonF', 'QGroupBox',
+    'QPainterPath', 'QPointF', 'QRectF', 'QFontMetrics', 'QFontMetricsF', 'QSizePolicy',
+    'QSlider', 'QTextCursor', 'QPolygonF', 'QGroupBox', 'QTransform',
     'QDockWidget', 'QListWidget', 'QListWidgetItem', 'QDialog', 'QInputDialog', 'QFormLayout',
-    'QCoreApplication', 'QPaintEvent',
-    'QGraphicsView', 'QGraphicsScene', 'QGraphicsEllipseItem', 
+    'QCoreApplication', 'QPaintEvent', 'QStandardPaths',
+    'QGraphicsView', 'QGraphicsScene', 'QGraphicsItem', 'QGraphicsEllipseItem', 
     'QGraphicsLineItem', 'QGraphicsRectItem', 'QGraphicsPolygonItem', 
     'QGraphicsPathItem', 'QGraphicsPixmapItem', 'QGraphicsSimpleTextItem', 
     'QGraphicsTextItem', 'QGraphicsItemGroup', 'QGraphicsProxyWidget',
+    'QToolBar', 'QSize',
     'PythonConsole', 'MolViewer3D', 'MolViewer2D'
 ]
 

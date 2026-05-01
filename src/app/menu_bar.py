@@ -135,6 +135,11 @@ def _build_tools_menu(window, menu_bar):
     reset_view.triggered.connect(lambda: window.viewer_3d.reset_view())
     tools_menu.addAction(reset_view)
 
+    tools_menu.addSeparator()
+    sketcher_action = QAction("2D-&Sketcher", window)
+    sketcher_action.triggered.connect(window._open_sketcher)
+    tools_menu.addAction(sketcher_action)
+
 
 # ── Plugins ───────────────────────────────────────────────────────
 
@@ -254,6 +259,7 @@ def _build_applications_menu(window, menu_bar):
     applications_menu.addAction(descriptor_calc)
 
     applications_menu.addSeparator()
+
 
     # Optimize geometry sub-menu
     opt_menu = applications_menu.addMenu("&Optimize Geometry")

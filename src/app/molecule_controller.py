@@ -25,6 +25,10 @@ def connect_signals(window):
     window.input_panel.export_mol2_requested.connect(window._export_mol2)
     window.input_panel.export_image_requested.connect(window._export_image)
 
+    # 2D Sketcher integration
+    if hasattr(window, 'sketcher_2d'):
+        window.sketcher_2d.molecule_imported.connect(window._on_sketcher_import)
+
     # Radius sliders
     window.input_panel.sphere_scale_changed.connect(
         lambda v: setattr(window.viewer_3d, 'sphere_scale', v) or window.viewer_3d.update())

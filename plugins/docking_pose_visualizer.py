@@ -895,8 +895,9 @@ class DockingPoseVisualizerWidget(QWidget):
                 node.anchor_pos = QPointF(sx, sy)
                 # Update text size from spinner
                 sz = self.sp_inner_fsize.value()
-                f_name = node.name_text.font(); f_name.setPointSize(sz); node.name_text.setFont(f_name)
-                f_id = node.id_text.font(); f_id.setPointSize(max(6, sz - 1)); node.id_text.setFont(f_id)
+                if sz > 0:
+                    f_name = node.name_text.font(); f_name.setPointSize(sz); node.name_text.setFont(f_name)
+                    f_id = node.id_text.font(); f_id.setPointSize(max(6, sz - 1)); node.id_text.setFont(f_id)
                 node.update_text_positions(node_radius)
                 
                 self.viewer.scene.addItem(node)

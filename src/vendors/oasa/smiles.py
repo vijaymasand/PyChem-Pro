@@ -574,8 +574,14 @@ class smiles( plugin):
               the_right_mol,
               the_right_branch_atom,
               the_right_branch)
-    #print mol, mol.is_connected()
-    raise Exception("fuck, how comes!?")
+    # Handle symmetric molecules like benzene - fallback to simple disconnection
+    # If no suitable edge found, try the first edge as fallback
+    if mol.edges:
+      e = list(mol.edges)[0]  # Get the first edge
+      mol.temporarily_disconnect_edge(e)
+      return e, mol, None, None
+    else:
+      raise Exception("Unable to generate SMILES: molecule has no edges")
 
 
 

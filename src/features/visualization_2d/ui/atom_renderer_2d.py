@@ -267,7 +267,9 @@ class AtomRenderer2D:
         elif len(bond_angles) == 1:
             base = bond_angles[0] + math.pi
             for i in range(h_count):
-                a = base + (i - (h_count - 1) / 2) * (math.pi / 3)
+                # Spread hydrogens by 120 degrees (2*pi/3) for better aesthetics
+                spread = (math.pi * 2 / 3) if h_count > 1 else (math.pi / 3)
+                a = base + (i - (h_count - 1) / 2) * spread
                 positions.append((sx + h_bond_len * math.cos(a), sy + h_bond_len * math.sin(a)))
         else:
             bond_angles.sort()

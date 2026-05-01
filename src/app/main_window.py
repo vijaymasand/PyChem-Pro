@@ -20,6 +20,7 @@ from src.features.control_panel.ui.input_panel import InputPanel
 from src.app.plugin_interface import PluginInterface
 from src.core.domain.models.bond import BondType
 from src.features.ui.substructure_dialog import SubstructureDialog
+from src.features.sketcher_2d.ui.sketcher_widget import SketcherWidget
 
 # ── Extracted modules ────────────────────────────────────────────
 from src.app.conversion_worker import ConversionWorker
@@ -109,6 +110,7 @@ class MainWindow(QMainWindow):
         self._UNDO_LIMIT = 10
         self._com_radius = 0.5
         self._centroid_radius = 0.4
+        self.sketcher_window = None
 
         self.setWindowTitle("PyChem -- Molecular Viewer and Cheminformatics Software")
         self.setMinimumSize(1100, 700)
@@ -438,6 +440,28 @@ class MainWindow(QMainWindow):
 
     def _convert_smiles(self, smiles):
         _mol_ctrl.convert_smiles(self, smiles)
+
+    def _on_sketcher_import(self, smiles):
+        """Handle SMILES imported from the 2D sketcher."""
+        if not smiles:
+            return
+        # Set the SMILES in the input panel for visibility
+        self.input_panel.smiles_input.setText(smiles)
+        # Start conversion
+        self._convert_smiles(smiles)
+        # Switch to 3D View to show the result
+        self.viewer_tabs.setCurrentWidget(self.viewer_3d)
+
+    def _open_sketcher(self):
+        """Open the 2D Sketcher in an independent window."""
+        if not self.sketcher_window:
+            from src.features.sketcher_2d.ui.sketcher_window import SketcherWindow
+            self.sketcher_window = SketcherWindow(self)
+            self.sketcher_window.sketcher.molecule_imported.connect(self._on_sketcher_import)
+        
+        self.sketcher_window.show()
+        self.sketcher_window.raise_()
+        self.sketcher_window.activateWindow()
 
     def _on_conversion_done(self, molecule, error):
         _mol_ctrl.on_conversion_done(self, molecule, error)
@@ -787,11 +811,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Plugins", "Plugin system not available")
 
     def _refresh_plugin_tabs(self):
-        """Refresh plugin tabs."""
+        """Refresh plugin tabs, preserving the core viewer tabs."""
         if self.plugin_interface and hasattr(self, 'viewer_tabs'):
-            while self.viewer_tabs.count() > 2:
-                self.viewer_tabs.removeTab(2)
+            # Preserve the first 3 core tabs: 3D View, 2D View, 2D-Sketcher
+            while self.viewer_tabs.count() > 3:
+                self.viewer_tabs.removeTab(3)
             self.plugin_interface.create_plugin_tabs(self.viewer_tabs)
+
 
     # ── About ────────────────────────────────────────────────────
 
