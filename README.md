@@ -790,3 +790,4 @@ A proper DOI will be issued once the first tagged release is published.
 - Issues: https://github.com/vijaymasand/PyChem-Pro/issues
 
 Questions, feedback, and pull requests are welcome.
+Many more functions coming in version 2.0.
