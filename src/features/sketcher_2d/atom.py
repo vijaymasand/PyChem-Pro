@@ -15,7 +15,7 @@ global atom_id_no
 atom_id_no = 1
 
 class Atom(OasaAtom, DrawableObject):
-    focus_priority = 5
+    focus_priority = 6
     redraw_priority = 2
     is_toplevel = False
     meta__undo_properties = ("symbol", "x", "y", "z", "charge", "isotope", "explicit_hydrogens", "show_symbol", "auto_hydrogens", "molecule", "color")
@@ -170,7 +170,7 @@ class Atom(OasaAtom, DrawableObject):
                 bond.draw()
 
     def _draw_invisible_atom(self):
-        r = Settings.bond_length / 4
+        r = Settings.bond_length / 3
         rect = self.x - r, self.y - r, self.x + r, self.y + r
         self._focusable_item = self.paper.addEllipse(rect, color=Color.transparent)
 
@@ -198,6 +198,10 @@ class Atom(OasaAtom, DrawableObject):
         self._main_items.insert(0, halo)
 
         focusable_rect = self.paper.itemBoundingBox(symbol_item)
+        # Add padding to make it easier to hit
+        x1, y1, x2, y2 = focusable_rect
+        p = 4
+        focusable_rect = [x1 - p, y1 - p, x2 + p, y2 + p]
         self._focusable_item = self.paper.addRect(focusable_rect, color=Color.transparent)
 
     def _draw_functional_group(self):
@@ -208,6 +212,10 @@ class Atom(OasaAtom, DrawableObject):
         self._main_items = [self.paper.addChemicalFormula(html_formula(self._text),
             (self.x, self.y), self._alignment, offset, font, color=self.color)]
         rect = self.paper.itemBoundingBox(self._main_items[0])
+        # Add padding
+        x1, y1, x2, y2 = rect
+        p = 4
+        rect = [x1 - p, y1 - p, x2 + p, y2 + p]
         self._focusable_item = self.paper.addRect(rect, color=Color.transparent)
 
     def _draw_marks(self):

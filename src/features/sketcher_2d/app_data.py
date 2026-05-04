@@ -39,8 +39,8 @@ class Settings:
     coord_head_dimensions = 6, 2.5, 2
     min_arrow_length = 30
     text_size = 14
-    focus_color = (0, 255, 0)
-    selection_color = (150, 150, 255)
+    focus_color = (255, 100, 100, 150)
+    selection_color = (100, 150, 255, 150)
     image_export_dpi = 100
     image_export_margin = 10
 

@@ -14,7 +14,7 @@ global bond_id_no
 bond_id_no = 1
 
 class Bond(OasaBond, DrawableObject):
-    focus_priority = 3
+    focus_priority = 6
     redraw_priority = 3
     is_toplevel = False
     meta__undo_properties = ("molecule", "type", "color",
@@ -142,6 +142,11 @@ class Bond(OasaBond, DrawableObject):
         method = "_draw_%s" % self.type
         if hasattr(self, method):
             getattr(self, method)()
+        
+        # Add a transparent hit area to make the bond easier to select
+        hit_item = self.paper.addLine(self._midline, self._line_width + 8, color=Color.transparent)
+        self._main_items.append(hit_item)
+
         for item in self._main_items:
             self.paper.toBondLayer(item)
             self.paper.addFocusable(item, self)
@@ -262,6 +267,10 @@ class Bond(OasaBond, DrawableObject):
         new_bond = Bond()
         new_bond.type = self.type
         return new_bond
+
+    def get_center(self):
+        if not self.atoms or len(self.atoms) < 2: return 0, 0
+        return (self.atoms[0].x + self.atoms[1].x) / 2, (self.atoms[0].y + self.atoms[1].y) / 2
 
     def flip_horizontal(self, center_x):
         if self.second_line_side is not None:

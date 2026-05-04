@@ -164,8 +164,14 @@ class Molecule(OasaMolecule, DrawableObject):
             self.remove_atom(atom)
             atom.delete_from_paper()
 
-    def scale(self, scale):
-        self.scale_val *= scale
+    def scale(self, factor, center=None):
+        if center is None: center = self.get_center()
+        cx, cy = center
+        for a in self.atoms:
+            a.x = cx + (a.x - cx) * factor
+            a.y = cy + (a.y - cy) * factor
+        self.scale_val *= factor
+        self.draw()
 
     def get_center(self):
         if not self.atoms: return 0, 0

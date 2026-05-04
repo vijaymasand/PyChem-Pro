@@ -21,6 +21,25 @@ class Shape(DrawableObject):
         self.y2 += dy
         self.draw()
 
+    def get_center(self):
+        return (self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2
+
+    def scale(self, factor, center=None):
+        if center is None: center = self.get_center()
+        cx, cy = center
+        self.x1 = cx + (self.x1 - cx) * factor
+        self.y1 = cy + (self.y1 - cy) * factor
+        self.x2 = cx + (self.x2 - cx) * factor
+        self.y2 = cy + (self.y2 - cy) * factor
+        self.draw()
+
+    def rotate(self, angle, center=None):
+        if center is None: center = self.get_center()
+        from . import geometry as geo
+        self.x1, self.y1 = geo.rotate_point(self.x1, self.y1, center[0], center[1], angle)
+        self.x2, self.y2 = geo.rotate_point(self.x2, self.y2, center[0], center[1], angle)
+        self.draw()
+
     def bounding_box(self):
         return [min(self.x1, self.x2), min(self.y1, self.y2), max(self.x1, self.x2), max(self.y1, self.y2)]
 

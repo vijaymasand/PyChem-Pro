@@ -6,6 +6,7 @@ global text_id_no
 text_id_no = 1
 
 class TextLabel(DrawableObject):
+    meta__undo_properties = ("x", "y", "text", "font_name", "font_size", "color")
     def __init__(self, x, y, text="Text"):
         DrawableObject.__init__(self)
         self.x = x
@@ -139,6 +140,14 @@ class TextLabel(DrawableObject):
     def rotate(self, angle, center):
         # Text doesn't rotate in this implementation
         pass
+
+    def scale(self, factor, center=None):
+        if center is None: center = self.get_center()
+        cx, cy = center
+        self.x = cx + (self.x - cx) * factor
+        self.y = cy + (self.y - cy) * factor
+        self.font_size *= factor
+        self.draw()
 
     def clone(self):
         new_text = TextLabel(self.x, self.y, text=self.text)

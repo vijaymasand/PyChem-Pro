@@ -8,6 +8,23 @@ def point_distance(p1, p2):
     return sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
 
 
+def dist_to_segment(p, s1, s2):
+    """ distance from point p to segment s1-s2 """
+    px, py = p
+    x1, y1 = s1
+    x2, y2 = s2
+    dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0:
+        return sqrt((px - x1)**2 + (py - y1)**2)
+    t = ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)
+    if t < 0:
+        return sqrt((px - x1)**2 + (py - y1)**2)
+    elif t > 1:
+        return sqrt((px - x2)**2 + (py - y2)**2)
+    else:
+        return sqrt((px - (x1 + t * dx))**2 + (py - (y1 + t * dy))**2)
+
+
 def points_within_range(p1, p2, range_):
     """ check if p1 and p2 has x and y difference not higher than range_ """
     return abs(p1[0] - p2[0]) <= range_ and abs(p1[1] - p2[1]) <= range_

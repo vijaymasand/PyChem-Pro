@@ -63,6 +63,8 @@ class Paper(QGraphicsScene):
                 if obj not in seen:
                     result.append(obj)
                     seen.add(obj)
+        # Sort by focus_priority (higher priority first)
+        result.sort(key=lambda x: getattr(x, 'focus_priority', 0), reverse=True)
         return result
 
     def redraw_dirty_objects(self):
@@ -163,7 +165,7 @@ class Paper(QGraphicsScene):
         return bbox_of_bboxes(bboxes)
 
     def toBondLayer(self, item): item.setZValue(-2)
-    def toSelectionLayer(self, item): item.setZValue(-3)
+    def toSelectionLayer(self, item): item.setZValue(10)
 
     def moveItemsBy(self, items, dx, dy):
         for item in items: item.moveBy(dx, dy)
@@ -233,6 +235,37 @@ class Paper(QGraphicsScene):
         if App.tool: App.tool.on_mouse_press(*self._mouse_press_pos)
         QGraphicsScene.mousePressEvent(self, ev)
 
+    def find_closest_object(self, x, y, radius):
+        objs = self.objectsInRect([x - radius, y - radius, x + radius, y + radius])
+        if not objs: return None
+        
+        from . import geometry as geo
+        from .atom import Atom
+        from .bond import Bond
+        
+        best_obj = None
+        min_dist = float('inf')
+        p = (x, y)
+        
+        for obj in objs:
+            dist = float('inf')
+            if isinstance(obj, Atom):
+                dist = geo.point_distance(p, (obj.x, obj.y))
+            elif isinstance(obj, Bond):
+                dist = geo.dist_to_segment(p, (obj.atoms[0].x, obj.atoms[0].y), (obj.atoms[1].x, obj.atoms[1].y))
+            else:
+                center = obj.get_center() if hasattr(obj, 'get_center') else None
+                if center:
+                    dist = geo.point_distance(p, center)
+            
+            # Tie-breaker: prioritize Atoms over Bonds if distances are nearly equal
+            if isinstance(obj, Atom): dist -= 0.5
+            
+            if dist < min_dist:
+                min_dist = dist
+                best_obj = obj
+        return best_obj
+
     def mouseMoveEvent(self, ev):
         x, y = ev.scenePos().x(), ev.scenePos().y()
         if self.mouse_pressed and not self.dragging:
@@ -240,8 +273,10 @@ class Paper(QGraphicsScene):
         # Only change focus when not pressing mouse (to preserve focus during typing)
         if not self.mouse_pressed:
             if not self.locked_focus_obj:
-                objs = self.objectsInRect([x - 5, y - 5, x + 5, y + 5])
-                focused_obj = objs[0] if objs else None
+                # Calculate hit area based on zoom level
+                zoom = self.view.transform().m11()
+                d = max(2, 8 / zoom)
+                focused_obj = self.find_closest_object(x, y, d)
                 self.changeFocusTo(focused_obj)
         if App.tool: App.tool.on_mouse_move(x, y)
         QGraphicsScene.mouseMoveEvent(self, ev)

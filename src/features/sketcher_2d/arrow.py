@@ -4,6 +4,7 @@ from . import geometry as geo
 from math import pi, cos, sin, atan2, sqrt
 
 class Arrow(DrawableObject):
+    meta__undo_properties = ("p1", "p2", "type", "curvature", "color")
     def __init__(self, p1, p2, type="reaction", curvature=1.0):
         DrawableObject.__init__(self)
         self.p1 = p1
@@ -223,6 +224,13 @@ class Arrow(DrawableObject):
         x, y = self.p2[0] - cx, self.p2[1] - cy
         self.p2 = (x * c - y * s + cx, x * s + y * c + cy)
         
+        self.draw()
+
+    def scale(self, factor, center=None):
+        if center is None: center = self.get_center()
+        cx, cy = center
+        self.p1 = (cx + (self.p1[0] - cx) * factor, cy + (self.p1[1] - cy) * factor)
+        self.p2 = (cx + (self.p2[0] - cx) * factor, cy + (self.p2[1] - cy) * factor)
         self.draw()
 
     def clone(self):

@@ -160,11 +160,20 @@ class StructureTool(Tool):
 
 class EraserTool(Tool):
     def on_mouse_press(self, x, y):
-        focused = App.paper.focused_obj
+        # Refresh focus at the moment of click for maximum precision
+        zoom = App.paper.view.transform().m11()
+        d = max(2, 8 / zoom)
+        focused = App.paper.find_closest_object(x, y, d)
+        
         if focused:
             # Save undo state BEFORE deletion
             App.paper.save_state_to_undo_stack()
             
+            from .atom import Atom
+            from .bond import Bond
+            from .arrow import Arrow
+            from .text_label import TextLabel
+
             if isinstance(focused, Atom):
                 mol = focused.molecule
                 # Remove connected bonds first
@@ -189,6 +198,9 @@ class EraserTool(Tool):
                 focused.delete_from_paper()
             elif isinstance(focused, TextLabel):
                 focused.delete_from_paper()
+            
+            # Draw all dirty objects
+            App.paper.redraw_dirty_objects()
 
 class RotateTool(Tool):
     def __init__(self):
@@ -499,12 +511,35 @@ class SelectTool(Tool):
             # move the current selection as a group.
             is_selected = focused in self.objs or (hasattr(focused, 'molecule') and focused.molecule in self.objs)
             
-            if is_selected:
-                self._move_targets = list(self.objs)
-            else:
-                # If we click on something NOT selected, select it and move whole molecule by default
+            # Narrow selection if clicking a member of a group without modifiers
+            modifiers = QApplication.keyboardModifiers()
+            has_modifiers = bool(modifiers & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier))
+            
+            if is_selected and not has_modifiers:
+                # Narrow to just the focused object
                 self.objs = [focused]
-                if hasattr(focused, 'molecule') and focused.molecule:
+                if isinstance(focused, Bond):
+                    self._move_targets = [focused.atoms[0], focused.atoms[1]]
+                elif isinstance(focused, Atom):
+                    self._move_targets = [focused]
+                else:
+                    self._move_targets = [focused]
+            elif is_selected:
+                # Keep current selection (moving as a group)
+                self._move_targets = list(self.objs)
+                # If a top-level molecule is selected, it's already in _move_targets
+                # If only individual parts are selected, they are already in _move_targets
+            else:
+                # If we click on something NOT selected, select it
+                self.objs = [focused]
+                if isinstance(focused, Bond):
+                    # For bonds, we move the two connected atoms to allow stretching
+                    self._move_targets = [focused.atoms[0], focused.atoms[1]]
+                elif isinstance(focused, Atom):
+                    # For atoms, we move only the atom itself
+                    self._move_targets = [focused]
+                elif hasattr(focused, 'molecule') and focused.molecule:
+                    # Fallback for other molecule parts (if any)
                     self._move_targets = [focused.molecule]
                 else:
                     self._move_targets = [focused]
@@ -578,18 +613,33 @@ class SelectTool(Tool):
         if not App.paper.dragging: return
         
         if self.rotating and self.right_click_press:
-            # Rotate selected objects with right click
+            # Rotate and Resize selected objects with right click
             if not self._move_targets: return
             obj = self._move_targets[0]
             if not hasattr(obj, 'get_center'): return
             
             center = obj.get_center()
             import math
+            
+            # Rotation
             angle1 = math.atan2(self.right_click_press[1] - center[1], self.right_click_press[0] - center[0])
             angle2 = math.atan2(y - center[1], x - center[0])
             angle = (angle2 - angle1) * 0.4 # Reduced sensitivity
             
-            obj.rotate(angle, center)
+            # Resizing
+            dist1 = math.sqrt((self.right_click_press[0] - center[0])**2 + (self.right_click_press[1] - center[1])**2)
+            dist2 = math.sqrt((x - center[0])**2 + (y - center[1])**2)
+            
+            scale_factor = 1.0
+            if dist1 > 5:
+                scale_factor = dist2 / dist1
+            
+            # Apply transformations
+            if hasattr(obj, 'rotate'):
+                obj.rotate(angle, center)
+            if scale_factor != 1.0 and hasattr(obj, 'scale'):
+                obj.scale(scale_factor, center)
+                
             if hasattr(obj, 'atoms'):
                 for a in obj.atoms:
                     a.on_bond_count_change()
@@ -729,11 +779,22 @@ class SelectTool(Tool):
             self.objs = []
             self._move_targets = []
             
+            # Pre-collect atoms in rect for bond selection rule
+            atoms_in_rect = {obj for obj in selected if isinstance(obj, Atom)}
+            
+            for obj in selected:
+                if isinstance(obj, Bond):
+                    # STRICTER RULE: Only select bond if both atoms are also in the rect
+                    if obj.atoms[0] in atoms_in_rect and obj.atoms[1] in atoms_in_rect:
+                        if obj not in self.objs:
+                            self.objs.append(obj)
+                else:
+                    if obj not in self.objs:
+                        self.objs.append(obj)
+            
             # Identify if we've captured entire molecules or just parts
             potential_mols = {} # mol_id -> [selected_atoms_count, total_atoms_count, mol_obj]
-            for obj in selected:
-                if obj not in self.objs:
-                    self.objs.append(obj)
+            for obj in self.objs:
                 if hasattr(obj, 'molecule') and obj.molecule:
                     mol = obj.molecule
                     if id(mol) not in potential_mols:
@@ -817,8 +878,8 @@ class ShapeTool(Tool):
         App.paper.addObject(self.current_shape)
         self.current_shape.draw()
 
-    def on_mouse_move(self, x, y, dragging):
-        if dragging and self.p1:
+    def on_mouse_move(self, x, y):
+        if App.paper.dragging and self.p1:
             x1, y1 = self.p1
             # Constraints (Shift for Square/Circle)
             if QApplication.keyboardModifiers() & Qt.KeyboardModifier.ShiftModifier:

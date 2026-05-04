@@ -74,6 +74,12 @@ class DrawableObject:
     def bounding_box(self):
         return None
 
+    def scale(self, factor, center=None):
+        pass
+
+    def rotate(self, angle, center=None):
+        pass
+
     def transform(self, tr):
         pass
 
