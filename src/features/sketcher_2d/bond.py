@@ -144,7 +144,8 @@ class Bond(OasaBond, DrawableObject):
             getattr(self, method)()
         
         # Add a transparent hit area to make the bond easier to select
-        hit_item = self.paper.addLine(self._midline, self._line_width + 8, color=Color.transparent)
+        # Expanded to +16 to make them much easier to grab in dense fused rings
+        hit_item = self.paper.addLine(self._midline, self._line_width + 16, color=Color.transparent)
         self._main_items.append(hit_item)
 
         for item in self._main_items:

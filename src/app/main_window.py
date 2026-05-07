@@ -19,8 +19,9 @@ from src.shared.ui.theme import (
 from src.features.control_panel.ui.input_panel import InputPanel
 from src.app.plugin_interface import PluginInterface
 from src.core.domain.models.bond import BondType
-from src.features.ui.substructure_dialog import SubstructureDialog
 from src.features.sketcher_2d.ui.sketcher_widget import SketcherWidget
+from src.features.visualization_3d.services.docking_pose_service import DockingPoseService
+from src.features.ui.docking_pose_dialog import DockingPoseDialog
 
 # ── Extracted modules ────────────────────────────────────────────
 from src.app.conversion_worker import ConversionWorker
@@ -713,6 +714,31 @@ class MainWindow(QMainWindow):
     def _show_protein_color_dialog(self):
         _viewer.show_protein_color_dialog(self)
 
+    def _change_residue_colors(self):
+        """Change residue label settings for residues around ligand."""
+        from src.features.ui.residue_label_settings_dialog import show_residue_label_settings_dialog
+        
+        # Show comprehensive residue label settings dialog
+        settings = show_residue_label_settings_dialog(self)
+        
+        if not settings:
+            return
+            
+        self.viewer_3d.residue_label_settings = settings
+        
+        if not hasattr(self.viewer_3d, 'labeled_residues') or not self.viewer_3d.labeled_residues:
+            self.viewer_3d.update()
+            return
+
+        color = settings.get('color', Qt.black)
+        count = 0
+        for rs in self.viewer_3d.labeled_residues:
+            self.viewer_3d.labeled_residues[rs] = color
+            count += 1
+            
+        self.viewer_3d.update()
+        self.status_bar.showMessage(f"Updated settings for {count} residue labels", 3000)
+
     def _update_atom_colors(self, colors):
         _viewer.update_atom_colors(self, colors)
 
@@ -857,3 +883,145 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Resize error: {e}")
             pass
+    def _open_docking_pose_view(self):
+        """Analyze and display molecular docking pose."""
+        mol = self.molecule
+        if not mol or not mol.atoms:
+            QMessageBox.warning(self, "Docking Pose", "No molecule loaded.")
+            return
+
+        service = DockingPoseService(mol)
+        ligands = service.find_ligands()
+        
+        if not ligands:
+            QMessageBox.warning(self, "Docking Pose", "No suitable ligand fragments detected.")
+            return
+            
+        dialog = DockingPoseDialog(ligands, self)
+        
+        while True:
+            result = dialog.exec_()
+            if result == 100: # Picking requested
+                self.status_bar.showMessage("Click on an atom in the 3D View to select its fragment...")
+                # Create a local event loop to wait for atom_clicked
+                from src.shared.qt_compat import QEventLoop
+                loop = QEventLoop()
+                picked_atom = [-1]
+                
+                def on_clicked(idx):
+                    picked_atom[0] = idx
+                    loop.quit()
+                
+                self.viewer_3d.atom_clicked.connect(on_clicked)
+                loop.exec_()
+                self.viewer_3d.atom_clicked.disconnect(on_clicked)
+                
+                if picked_atom[0] != -1:
+                    found = dialog.select_fragment_containing(picked_atom[0])
+                    if not found:
+                        self.status_bar.showMessage("Selected atom is not part of any detected fragment.")
+                    else:
+                        self.status_bar.showMessage(f"Selected fragment containing atom {picked_atom[0]}")
+                dialog.show()
+                continue
+            elif result == 0: # Cancel
+                return
+            else: # Apply
+                break
+
+        config = dialog.get_config()
+        ligand_indices = config['ligand_indices']
+        dist = config['distance']
+        
+        # Handle quick action buttons
+        if config['label_nearby']:
+            # Label residues within 5.0 Å of ligand
+            if hasattr(self, 'console') and self.console:
+                self.console._label_residues('within 5.0 ligand')
+            return
+        elif config['clear_labels']:
+            # Clear all residue labels
+            if hasattr(self, 'console') and self.console:
+                self.console._clear_residue_labels()
+            return
+        elif config['zoom_to_ligand']:
+            # Zoom to ligand with 7 Å surrounding area
+            self._zoom_to_ligand_area(ligand_indices, 7.0)
+            return
+        
+        nearby_res_seqs = service.find_nearby_residues(ligand_indices, dist)
+        interactions = service.detect_interactions(ligand_indices, nearby_res_seqs)
+        
+        # Update viewer state
+        self.viewer_3d.show_ligands_in_cartoon = True  # Ensure ligands are visible
+        self.viewer_3d.visible_sidechains = nearby_res_seqs
+        
+        # Interaction colors
+        interaction_colors = {
+            "Hydrogen Bond": "#00FF00",
+            "Salt Bridge": "#FF00FF",
+            "Hydrophobic": "#FFFF00",
+            "Pi-Stacking": "#00FFFF"
+        }
+        
+        lines = []
+        for inter in interactions:
+            if inter.type == "Hydrogen Bond" and not config['show_hbonds']: continue
+            if inter.type == "Salt Bridge" and not config['show_salt']: continue
+            if inter.type == "Hydrophobic" and not config['show_hydro']: continue
+            
+            color = interaction_colors.get(inter.type, "#FFFFFF")
+            lines.append((inter.atom1_idx, inter.atom2_idx, inter.type, color))
+        
+        self.viewer_3d.interaction_lines = lines
+        
+        # Custom modes and labels
+        cam = {}
+        labels = {}
+        processed_residues = set()
+        
+        # Ligand atoms as ball-and-stick
+        for idx in ligand_indices:
+            cam[idx] = 'ball_and_stick'
+        
+        # Residue atoms as sticks and labels
+        for atom in mol.atoms:
+            if atom.res_seq in nearby_res_seqs:
+                pdb_name = getattr(atom, 'pdb_name', '').strip()
+                if pdb_name not in ('CA', 'C', 'N', 'O'):
+                    cam[atom.index] = 'stick'
+                
+                # Disable automatic residue labeling to reduce visual clutter
+                # if pdb_name == 'CA' and atom.res_seq not in processed_residues:
+                #     res_label = f"{getattr(atom, 'res_name', 'UNK')}{atom.res_seq}"
+                #     labels[atom.index] = res_label
+                #     processed_residues.add(atom.res_seq)
+        
+        self.viewer_3d.custom_atom_modes = cam
+        self.viewer_3d.labels = labels
+        self.viewer_3d.update()
+        
+        if config['save_report']:
+            self._save_docking_report(service, interactions)
+
+    def _zoom_to_ligand_area(self, ligand_indices, radius_angstroms=7.0):
+        """Zoom to ligand with specified radius in angstroms."""
+        if not self.viewer_3d.molecule or not ligand_indices:
+            return
+        
+        # Use the existing focus_on_atoms method which handles centering correctly, 
+        # passing the radius to include the surrounding area
+        self.viewer_3d.focus_on_atoms(ligand_indices, padding_angstroms=radius_angstroms)
+        self.status_bar.showMessage(f"Zoomed to ligand with {radius_angstroms} Å surrounding area", 3000)
+
+    def _save_docking_report(self, service, interactions):
+        """Save interaction report to CSV."""
+        path, _ = QFileDialog.getSaveFileName(self, "Save Docking Report", "docking_report.csv", "CSV Files (*.csv)")
+        if path:
+            try:
+                csv_content = service.generate_report_csv(interactions)
+                with open(path, 'w') as f:
+                    f.write(csv_content)
+                QMessageBox.information(self, "Report Saved", f"Report saved to {path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save report: {e}")

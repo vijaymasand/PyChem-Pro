@@ -103,21 +103,26 @@ class PainterRenderer:
             # Also cache the flat colour for the simple-dot LOD path
             flat_color = QColor(r, g, b, alpha_int)
 
-            self._gradient_cache[key] = (highlight, base, mid, shadow,
-                                         flat_color, radius > 6 and alpha > 0.5)
+            # Rim lighting color
+            rim_color = QColor(min(255, r + 30), min(255, g + 30), min(255, b + 30), alpha_int)
+
+            self._gradient_cache[key] = (highlight, base, mid, shadow, rim_color,
+                                         flat_color, radius > 4 and alpha > 0.5)
 
         stops = self._gradient_cache[key]
-        highlight, base_c, mid_c, shadow_c, _flat, do_specular = stops
+        highlight, base_c, mid_c, shadow_c, rim_c, _flat, do_specular = stops
 
         # Build a positioned gradient (cheap — no colour math)
-        highlight_x = sx - radius * 0.30
-        highlight_y = sy - radius * 0.30
+        highlight_x = sx - radius * 0.35
+        highlight_y = sy - radius * 0.35
         gradient = QRadialGradient(QPointF(sx, sy), radius,
                                    QPointF(highlight_x, highlight_y))
         gradient.setColorAt(0.0, highlight)
-        gradient.setColorAt(0.25, base_c)
-        gradient.setColorAt(0.7, mid_c)
-        gradient.setColorAt(1.0, shadow_c)
+        gradient.setColorAt(0.08, highlight)
+        gradient.setColorAt(0.35, base_c)
+        gradient.setColorAt(0.75, mid_c)
+        gradient.setColorAt(0.92, shadow_c)
+        gradient.setColorAt(1.0, rim_c)
 
         return gradient, do_specular
 
@@ -267,15 +272,54 @@ class PainterRenderer:
 
             # Draw any custom-styled atoms over the protein backbone
             cam = getattr(v, 'custom_atom_modes', {})
-            if cam:
-                self._draw_bonds(v, painter, projected, custom_only=True)
+            
+            # AUTOMATIC HETEROATOM/SIDECHAIN LOGIC
+            atoms_to_draw = set()
+            for atom_idx in cam:
+                atoms_to_draw.add(atom_idx)
+            
+            # Add HETATMs (ligands) automatically
+            if getattr(v, 'show_ligands_in_cartoon', True):
+                for atom in v.molecule.atoms:
+                    if getattr(atom, 'is_hetatm', False):
+                        # Filter out water by default
+                        res_name = getattr(atom, 'res_name', '').upper()
+                        if res_name not in ('HOH', 'WAT', 'SOL', 'DOD'):
+                            atoms_to_draw.add(atom.index)
+            
+            # Add specific residues (sidechains)
+            visible_sidechains = getattr(v, 'visible_sidechains', set())
+            if visible_sidechains:
+                for atom in v.molecule.atoms:
+                    if atom.res_seq in visible_sidechains:
+                        # Draw sidechain atoms (not backbone CA, C, N, O)
+                        pdb_name = getattr(atom, 'pdb_name', '').strip()
+                        if pdb_name not in ('CA', 'C', 'N', 'O'):
+                            atoms_to_draw.add(atom.index)
+            
+            # Ensure any manually styled atoms (like docking ligands) are visible
+            if hasattr(v, 'custom_atom_modes'):
+                atoms_to_draw.update(v.custom_atom_modes.keys())
+            
+            if atoms_to_draw:
+                self._draw_bonds(v, painter, projected, custom_only=True, 
+                                 width=width, height=height, force_indices=atoms_to_draw)
+                
+                # DRAW INTERACTION LINES
+                if getattr(v, 'interaction_lines', []):
+                    self._draw_interaction_lines(v, painter, projected, width, height)
+
                 for atom_idx, sx, sy, sz, radius, color in sorted_atoms:
-                    if atom_idx in cam:
+                    if atom_idx in atoms_to_draw:
                         # Off-screen culling
                         if (sx < -_cull_margin or sx > width + _cull_margin or
                                 sy < -_cull_margin or sy > height + _cull_margin):
                             continue
                         self._draw_atom_sphere(v, painter, atom_idx, sx, sy, sz, radius, color)
+            
+            # DRAW LABELS
+            if getattr(v, 'labels', {}):
+                self._draw_labels(v, painter, projected)
         else:
             # Optimize rendering for VERY large molecules only.
             # Below 8000 atoms we still use gradient spheres so PDB proteins
@@ -327,14 +371,16 @@ class PainterRenderer:
 
         # Draw specific residue labels dynamically
         if hasattr(v, 'labeled_residues') and v.labeled_residues:
-            for atom_idx, sx, sy, sz, radius, color in sorted_atoms:
-                atom = v.molecule.atoms[atom_idx]
-                rs = getattr(atom, 'res_seq', None)
-                if rs is not None and rs in v.labeled_residues:
-                    if hasattr(atom, 'pdb_name') and atom.pdb_name.strip() == 'CA':
-                        res_name = getattr(atom, 'res_name', 'UNK')
-                        lbl_color = v.labeled_residues[rs]
-                        self._draw_residue_label(v, painter, f"{res_name}{rs}", sx, sy, lbl_color, radius)
+            settings = getattr(v, 'residue_label_settings', {})
+            if settings.get('show_labels', True):
+                for atom_idx, sx, sy, sz, radius, color in sorted_atoms:
+                    atom = v.molecule.atoms[atom_idx]
+                    rs = getattr(atom, 'res_seq', None)
+                    if rs is not None and rs in v.labeled_residues:
+                        if hasattr(atom, 'pdb_name') and atom.pdb_name.strip() == 'CA':
+                            res_name = getattr(atom, 'res_name', 'UNK')
+                            lbl_color = v.labeled_residues[rs]
+                            self._draw_residue_label(v, painter, f"{res_name}{rs}", sx, sy, lbl_color, radius, settings)
 
         # Draw dummy spheres (COM, centroid, custom)
         self._draw_dummy_spheres(v, painter, width, height)
@@ -376,9 +422,20 @@ class PainterRenderer:
         is_hovered = (atom_idx == v._hovered_atom)
         use_ssao = getattr(v, 'use_ssao', False)
 
+        # Resolve element symbol for cache key
+        if atom_idx >= 0 and v.molecule and atom_idx < len(v.molecule.atoms):
+            atom = v.molecule.atoms[atom_idx]
+            elem_sym = atom.symbol
+            # Check if this atom is part of a custom render set (ligand/sidechain)
+            is_custom = atom_idx in getattr(v, 'custom_atom_modes', {})
+        else:
+            elem_sym = '_dummy'
+            is_custom = False
+
         # Performance optimization: Skip complex rendering for very large molecules
+        # but ALWAYS draw ligands/sidechains (custom modes) in high quality.
         num_atoms = len(v.molecule.atoms) if v.molecule else 0
-        use_simple_rendering = num_atoms > 2000 and not is_hovered
+        use_simple_rendering = num_atoms > 10000 and not is_hovered and not is_custom
 
         if use_simple_rendering:
             # Simple filled circle for very large proteins
@@ -386,12 +443,6 @@ class PainterRenderer:
             painter.setBrush(QBrush(QColor(*rgb)))
             painter.drawEllipse(QPointF(sx, sy), max(2, radius), max(2, radius))
             return
-
-        # Resolve element symbol for cache key
-        if atom_idx >= 0 and v.molecule and atom_idx < len(v.molecule.atoms):
-            elem_sym = v.molecule.atoms[atom_idx].symbol
-        else:
-            elem_sym = '_dummy'
 
         gradient, do_specular = self._get_cached_gradient(
             elem_sym, radius, sx, sy, rgb,
@@ -402,15 +453,16 @@ class PainterRenderer:
         painter.drawEllipse(QRectF(sx - radius, sy - radius,
                                     radius * 2, radius * 2))
 
-        # Simplified specular for performance (only for hovered atoms)
-        if do_specular and is_hovered:
-            spec_radius = radius * 0.15  # Reduced from 0.18
-            spec_x = sx - radius * 0.25
-            spec_y = sy - radius * 0.25
+        # Specular for performance
+        if do_specular:
+            spec_radius = radius * 0.12
+            spec_x = sx - radius * 0.3
+            spec_y = sy - radius * 0.3
             spec_grad = QRadialGradient(QPointF(spec_x, spec_y), spec_radius,
                                          QPointF(spec_x, spec_y))
-            alpha_val = alpha
-            spec_grad.setColorAt(0.0, QColor(255, 255, 255, int(120 * alpha_val)))  # Reduced opacity
+            
+            opacity = 180 if is_hovered else 80
+            spec_grad.setColorAt(0.0, QColor(255, 255, 255, int(opacity * alpha)))
             spec_grad.setColorAt(1.0, QColor(255, 255, 255, 0))
             painter.setBrush(QBrush(spec_grad))
             painter.drawEllipse(QRectF(spec_x - spec_radius,
@@ -431,13 +483,17 @@ class PainterRenderer:
     def _draw_atom_simple(self, painter, sx, sy, radius, color):
         """Draw atom as simple filled circle (fast for large molecules)."""
         painter.setPen(Qt.PenStyle.NoPen)
+        # Convert RGB tuple to QColor if needed
+        if isinstance(color, (tuple, list)) and len(color) >= 3:
+            from PySide6.QtGui import QColor
+            color = QColor(int(color[0]), int(color[1]), int(color[2]))
         painter.setBrush(QBrush(color))
         painter.drawEllipse(QPointF(sx, sy), max(2, radius), max(2, radius))
 
     # ─── Bond drawing ────────────────────────────────────────────
 
     def _draw_bonds(self, v, painter, projected, custom_only=False,
-                    width=None, height=None):
+                    width=None, height=None, force_indices=None):
         """Draw bonds as lines/cylinders between atoms."""
         if not v.molecule:
             return
@@ -456,8 +512,10 @@ class PainterRenderer:
             if i not in proj_map or j not in proj_map:
                 continue
 
-            if custom_only and i not in cam and j not in cam:
-                continue
+            if custom_only:
+                is_forced = force_indices and (i in force_indices or j in force_indices)
+                if not is_forced and i not in cam and j not in cam:
+                    continue
 
             _, x1, y1, z1, r1, c1 = proj_map[i]
             _, x2, y2, z2, r2, c2 = proj_map[j]
@@ -554,9 +612,10 @@ class PainterRenderer:
         atom = v.molecule.atoms[atom_idx]
         draw_label(painter, atom.symbol, sx, sy, radius, v.label_font_size, getattr(v, '_export_scale', 1.0))
 
-    def _draw_residue_label(self, v, painter, text, sx, sy, color, radius):
+    def _draw_residue_label(self, v, painter, text, sx, sy, color, radius, settings=None):
         from src.features.visualization_3d.services.atom_rendering import draw_residue_label
-        draw_residue_label(painter, text, sx, sy, color, radius, v.label_font_size, getattr(v, '_export_scale', 1.0))
+        settings = settings or getattr(v, 'residue_label_settings', {})
+        draw_residue_label(painter, text, sx, sy, color, radius, v.label_font_size, getattr(v, '_export_scale', 1.0), settings)
 
     def _draw_overlay(self, v, painter):
         from src.features.visualization_3d.services.overlay_rendering import draw_overlay
@@ -632,6 +691,45 @@ class PainterRenderer:
         painter.setPen(QColor(255, 255, 100))
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          indicator_text)
+
+    def _draw_interaction_lines(self, v, painter, projected, width, height):
+        """Draw dashed lines for molecular interactions."""
+        proj_map = {p[0]: p for p in projected}
+        
+        for idx1, idx2, type_str, color_hex in v.interaction_lines:
+            if idx1 not in proj_map or idx2 not in proj_map:
+                continue
+                
+            _, x1, y1, z1, _, _ = proj_map[idx1]
+            _, x2, y2, z2, _, _ = proj_map[idx2]
+            
+            # Off-screen culling
+            _margin = 50
+            if ((x1 < -_margin and x2 < -_margin) or
+                (x1 > width + _margin and x2 > width + _margin) or
+                (y1 < -_margin and y2 < -_margin) or
+                (y1 > height + _margin and y2 > height + _margin)):
+                continue
+                
+            color = QColor(color_hex)
+            pen = QPen(color, 1.5, Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+    def _draw_labels(self, v, painter, projected):
+        """Draw text labels for specific atoms."""
+        proj_map = {p[0]: p for p in projected}
+        font = QFont("Segoe UI", 9, QFont.Weight.Bold)
+        painter.setFont(font)
+        
+        for idx, text in v.labels.items():
+            if idx in proj_map:
+                _, sx, sy, sz, radius, _ = proj_map[idx]
+                # Draw subtle shadow for readability
+                painter.setPen(QColor(0, 0, 0, 200))
+                painter.drawText(sx + radius + 1, sy - radius + 1, text)
+                painter.setPen(QColor(255, 255, 255))
+                painter.drawText(sx + radius, sy - radius, text)
 
     # ─── Measurements ────────────────────────────────────────────
 

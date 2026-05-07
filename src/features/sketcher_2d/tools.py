@@ -264,22 +264,33 @@ class TemplateTool(Tool):
         self.template_name = template_name
 
     def on_mouse_press(self, x, y):
-        # Look for a bond in the vicinity to fuse to, even if an atom is focused
-        objs = App.paper.objectsInRect([x - 7, y - 7, x + 7, y + 7])
+        from .bond import Bond
+        from . import geometry as geo
+        
+        focused = App.paper.focused_obj
         bond = None
-        for obj in objs:
-            if isinstance(obj, Bond):
-                bond = obj
-                break
+        
+        if isinstance(focused, Bond):
+            bond = focused
+        else:
+            # Check if there is a bond very close, even if atom is focused
+            objs = App.paper.objectsInRect([x - 10, y - 10, x + 10, y + 10])
+            
+            min_dist = float('inf')
+            for obj in objs:
+                if isinstance(obj, Bond):
+                    dist = geo.dist_to_segment((x, y), (obj.atoms[0].x, obj.atoms[0].y), (obj.atoms[1].x, obj.atoms[1].y))
+                    if dist < min_dist:
+                        min_dist = dist
+                        bond = obj
+                        
+            if min_dist > 10:
+                bond = None
         
         if bond:
             self._fuse_to_bond(bond, x, y)
         else:
-            focused = App.paper.focused_obj
-            if isinstance(focused, Bond):
-                self._fuse_to_bond(focused, x, y)
-            else:
-                self._place_at(x, y)
+            self._place_at(x, y)
         App.paper.save_state_to_undo_stack()
 
     def _place_at(self, x, y):
@@ -511,35 +522,25 @@ class SelectTool(Tool):
             # move the current selection as a group.
             is_selected = focused in self.objs or (hasattr(focused, 'molecule') and focused.molecule in self.objs)
             
-            # Narrow selection if clicking a member of a group without modifiers
+            # Narrowing will happen on mouse release if no dragging occurred.
+            from PySide6.QtWidgets import QApplication
+            from PySide6.QtCore import Qt
             modifiers = QApplication.keyboardModifiers()
             has_modifiers = bool(modifiers & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier))
             
             if is_selected and not has_modifiers:
-                # Narrow to just the focused object
-                self.objs = [focused]
-                if isinstance(focused, Bond):
-                    self._move_targets = [focused.atoms[0], focused.atoms[1]]
-                elif isinstance(focused, Atom):
-                    self._move_targets = [focused]
-                else:
-                    self._move_targets = [focused]
+                # Keep current selection (moving as a group)
+                if not self._move_targets:
+                    self._move_targets = list(self.objs)
             elif is_selected:
                 # Keep current selection (moving as a group)
-                self._move_targets = list(self.objs)
-                # If a top-level molecule is selected, it's already in _move_targets
-                # If only individual parts are selected, they are already in _move_targets
+                if not self._move_targets:
+                    self._move_targets = list(self.objs)
             else:
-                # If we click on something NOT selected, select it
+                # If we click on something NOT selected, select the specific item visually
                 self.objs = [focused]
-                if isinstance(focused, Bond):
-                    # For bonds, we move the two connected atoms to allow stretching
-                    self._move_targets = [focused.atoms[0], focused.atoms[1]]
-                elif isinstance(focused, Atom):
-                    # For atoms, we move only the atom itself
-                    self._move_targets = [focused]
-                elif hasattr(focused, 'molecule') and focused.molecule:
-                    # Fallback for other molecule parts (if any)
+                # BUT move the whole molecule by default for intuitive click-and-drag
+                if hasattr(focused, 'molecule') and focused.molecule:
                     self._move_targets = [focused.molecule]
                 else:
                     self._move_targets = [focused]
@@ -582,10 +583,14 @@ class SelectTool(Tool):
             
             self.objs = [obj]
             self._move_targets = [obj]
+            
             # Update selection visuals
             for o in App.paper.objects:
                 if hasattr(o, 'set_selected'):
-                    o.set_selected(o in self.objs)
+                    o.set_selected(False)
+            for o in self.objs:
+                if hasattr(o, 'set_selected'):
+                    o.set_selected(True)
 
     def on_right_click(self, x, y):
         self.right_click_press = (x, y)
@@ -832,6 +837,36 @@ class SelectTool(Tool):
         
         if self.objs or self.dragging_curvature:
             App.paper.save_state_to_undo_stack()
+            
+        # Check if we should narrow the selection (clicked without dragging)
+        if self.mode == "move" and not self.is_copying and not self.rotating and not self.selection_rect_item:
+            import math
+            dx = x - self.selection_start_pos[0]
+            dy = y - self.selection_start_pos[1]
+            if math.sqrt(dx*dx + dy*dy) < 3:
+                focused = App.paper.focused_obj
+                # Narrow selection if clicking a member of a group without modifiers
+                modifiers = QApplication.keyboardModifiers()
+                has_modifiers = bool(modifiers & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier))
+                
+                if focused and (focused in self.objs or (hasattr(focused, 'molecule') and focused.molecule in self.objs)) and len(self.objs) >= 1 and not has_modifiers:
+                    # If the selected object is a molecule, narrowing it to the specific atom/bond
+                    if len(self.objs) > 1 or (len(self.objs) == 1 and hasattr(self.objs[0], 'atoms')):
+                        self.objs = [focused]
+                        if isinstance(focused, Bond):
+                            self._move_targets = [focused.atoms[0], focused.atoms[1]]
+                        elif isinstance(focused, Atom):
+                            self._move_targets = [focused]
+                        else:
+                            self._move_targets = [focused]
+                        
+                        for o in App.paper.objects:
+                            if hasattr(o, 'set_selected'):
+                                o.set_selected(False)
+                        for o in self.objs:
+                            if hasattr(o, 'set_selected'):
+                                o.set_selected(True)
+        
         self.dragging_curvature = None
         self.mode = "move"
         self.is_copying = False

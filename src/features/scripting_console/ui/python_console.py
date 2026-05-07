@@ -10,6 +10,7 @@ import io
 import traceback
 from src.shared.qt_compat import QWidget, QVBoxLayout, QTextEdit, QLineEdit, QLabel, QHBoxLayout, Qt, Signal, QFont, QColor, QTextCursor
 from src.shared.ui.theme import COLORS, theme_signals
+from src.features.visualization_3d.services.docking_pose_service import DockingPoseService
 
 
 class PythonConsole(QWidget):
@@ -155,6 +156,9 @@ class PythonConsole(QWidget):
             # Direct functions still available
             'select': self._select_by_element,
             'select_idx': self._select_by_indices,
+            # Residue labeling
+            'label_residues': self._label_residues,
+            'clear_labels': self._clear_residue_labels,
             # Measurement
             'distance': self._measure_distance,
             'dist': self._measure_distance,
@@ -170,6 +174,8 @@ class PythonConsole(QWidget):
             'set_sasa_density': self._set_sasa_density,
             # Help
             'help_cmds': self._show_help,
+            'pose': self._pose,
+            'docking_pose': self._pose,
         }
         # Pre-import numpy
         try:
@@ -746,6 +752,68 @@ class PythonConsole(QWidget):
             self._append_text(f"Error computing similarity: {e}", COLORS['warning'])
             return 0.0
 
+    def _pose(self, dist=5.0, show_hbonds=True, show_salt=True, show_hydro=False):
+        """pose(dist=5.0) — Generate and display 3D docking pose."""
+        mol = self._namespace.get('mol')
+        if not mol or not self._viewer_3d:
+            self._append_text("No molecule or 3D viewer available.", COLORS['warning'])
+            return
+            
+        service = DockingPoseService(mol)
+        ligands = service.find_ligands()
+        if not ligands:
+            self._append_text("No ligands detected.", COLORS['warning'])
+            return
+            
+        ligand_indices = ligands[0] # Use largest ligand by default
+        nearby_res = service.find_nearby_residues(ligand_indices, dist)
+        interactions = service.detect_interactions(ligand_indices, nearby_res)
+        
+        # Update viewer
+        v = self._viewer_3d
+        v.show_ligands_in_cartoon = True  # Ensure ligands are visible
+        v.visible_sidechains = nearby_res
+        
+        interaction_colors = {
+            "Hydrogen Bond": "#00FF00",
+            "Salt Bridge": "#FF00FF",
+            "Hydrophobic": "#FFFF00",
+            "Pi-Stacking": "#00FFFF"
+        }
+        
+        lines = []
+        for inter in interactions:
+            if inter.type == "Hydrogen Bond" and not show_hbonds: continue
+            if inter.type == "Salt Bridge" and not show_salt: continue
+            if inter.type == "Hydrophobic" and not show_hydro: continue
+            color = interaction_colors.get(inter.type, "#FFFFFF")
+            lines.append((inter.atom1_idx, inter.atom2_idx, inter.type, color))
+        
+        v.interaction_lines = lines
+        
+        cam = {}
+        labels = {}
+        processed = set()
+        for idx in ligand_indices:
+            cam[idx] = 'ball_and_stick'
+        for atom in mol.atoms:
+            if atom.res_seq in nearby_res:
+                pdb_name = getattr(atom, 'pdb_name', '').strip()
+                if pdb_name not in ('CA', 'C', 'N', 'O'):
+                    cam[atom.index] = 'stick'
+                # Disable automatic residue labeling to reduce visual clutter
+                # if pdb_name == 'CA' and atom.res_seq not in processed:
+                #     labels[atom.index] = f"{getattr(atom, 'res_name', 'UNK')}{atom.res_seq}"
+                #     processed.add(atom.res_seq)
+        
+        v.custom_atom_modes = cam
+        v.labels = labels
+        v.update()
+        
+        self._append_output(f"Docking pose generated: {len(ligand_indices)} ligand atoms, "
+                            f"{len(nearby_res)} residues, {len(interactions)} interactions.")
+        return interactions
+
     # ─── Internals ─────────────────────────────────────────────────
 
     def _apply_selection(self, indices):
@@ -785,6 +853,9 @@ class PythonConsole(QWidget):
             "  sele('solvent')        Water molecules (HOH/WAT)\n"
             "  s('N or O or S')       s() = short for sele()\n"
             "  clear()                Clear selection\n"
+            "  label_residues()       Label visible residues\n"
+            "  label_residues('chain A') Label residues in selection\n"
+            "  clear_labels()         Clear all residue labels\n"
             "  selected()             Get selected indices\n"
             "  count('expr')          Number of atoms in selection\n"
             "  sum_prop('sasa', 'C')  Sum property across selection\n"
@@ -861,6 +932,78 @@ class PythonConsole(QWidget):
 
         self.output.setTextCursor(cursor)
         self.output.ensureCursorVisible()
+
+    def _label_residues(self, selection_expr=None):
+        """
+        Label residues for selected atoms or visible residues.
+        
+        Usage:
+            label_residues()                    - Label all visible residues
+            label_residues('within 5.0 ligand') - Label residues matching selection
+            label_residues('chain A')           - Label residues in chain A
+        """
+        mol = self._namespace.get('mol')
+        v = self._viewer_3d
+        if not mol or not v:
+            self._append_text("No molecule or viewer available.", COLORS['warning'])
+            return []
+        
+        try:
+            # Determine which residues to label
+            if selection_expr:
+                # Use selection expression to find residues
+                selected_atoms = self._parse_selection_expr(selection_expr, mol)
+                residue_seqs = set()
+                for atom_idx in selected_atoms:
+                    atom = mol.atoms[atom_idx]
+                    rs = getattr(atom, 'res_seq', None)
+                    if rs is not None:
+                        residue_seqs.add(rs)
+            else:
+                # Use currently visible residues
+                residue_seqs = v.visible_sidechains.copy()
+                
+                # Also include residues with custom atom modes (like ligands)
+                if hasattr(v, 'custom_atom_modes'):
+                    for atom_idx in v.custom_atom_modes:
+                        atom = mol.atoms[atom_idx]
+                        rs = getattr(atom, 'res_seq', None)
+                        if rs is not None:
+                            residue_seqs.add(rs)
+            
+            # Create labels for CA atoms of selected residues
+            labels_count = 0
+            if not hasattr(v, 'labeled_residues'):
+                v.labeled_residues = {}
+                
+            for atom in mol.atoms:
+                rs = getattr(atom, 'res_seq', None)
+                if rs is not None and rs in residue_seqs:
+                    if hasattr(atom, 'pdb_name') and atom.pdb_name.strip() == 'CA':
+                        if rs not in v.labeled_residues:
+                            v.labeled_residues[rs] = QColor(Qt.GlobalColor.black)
+                            labels_count += 1
+            
+            v.update()
+            self._append_output(f"Labeled {labels_count} residues.")
+            return list(residue_seqs)
+            
+        except Exception as e:
+            self._append_text(f"Error labeling residues: {e}", COLORS['error'])
+            return []
+
+    def _clear_residue_labels(self):
+        """Clear all residue labels from the viewer."""
+        v = self._viewer_3d
+        if not v:
+            self._append_text("No viewer available.", COLORS['warning'])
+            return
+        
+        # Clear all labels
+        v.labels.clear()
+        v.labeled_residues.clear()
+        v.update()
+        self._append_output("All residue labels cleared.")
 
     def keyPressEvent(self, event):
         """Handle history navigation."""

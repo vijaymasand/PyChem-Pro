@@ -224,10 +224,13 @@ class Paper(QGraphicsScene):
                 App.tool.on_right_click(x, y)
             return
 
-        objs = self.objectsInRect([x - 5, y - 5, x + 5, y + 5])
-        if objs:
-            self.locked_focus_obj = objs[0]
-            self.changeFocusTo(objs[0])
+        zoom = self.view.transform().m11()
+        d = max(2, 8 / zoom)
+        focused = self.find_closest_object(x, y, d)
+        
+        if focused:
+            self.locked_focus_obj = focused
+            self.changeFocusTo(focused)
         else:
             self.locked_focus_obj = None
             self.changeFocusTo(None)
@@ -259,6 +262,7 @@ class Paper(QGraphicsScene):
                     dist = geo.point_distance(p, center)
             
             # Tie-breaker: prioritize Atoms over Bonds if distances are nearly equal
+            # Atoms are at the joints, so clicking a joint should select the atom.
             if isinstance(obj, Atom): dist -= 0.5
             
             if dist < min_dist:

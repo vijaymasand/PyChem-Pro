@@ -107,18 +107,35 @@ def draw_label(painter: QPainter, label: str, sx: float, sy: float, radius: floa
     painter.setPen(QColor(255, 255, 255, 230))
     painter.drawText(int(sx + offset_x), int(sy + offset_y), label)
 
-def draw_residue_label(painter: QPainter, text: str, sx: float, sy: float, color: QColor, radius: float, base_font_size: int, export_scale: float = 1.0):
-    font_size = base_font_size + 2
+def draw_residue_label(painter: QPainter, text: str, sx: float, sy: float, color: QColor, radius: float, base_font_size: int, export_scale: float = 1.0, settings: dict = None):
+    settings = settings or {}
+    font_family = settings.get('font_family', 'Segoe UI')
+    font_size = settings.get('font_size', base_font_size + 2)
+    is_bold = settings.get('bold', True)
+    is_italic = settings.get('italic', False)
+    draw_bg = settings.get('background', False)
+
     if export_scale > 1.0:
         scale_factor = min(export_scale * 0.3, 0.8)
         font_size = max(8, int(font_size * scale_factor))
 
-    font = QFont('Segoe UI', font_size)
-    font.setBold(True)
+    font = QFont(font_family, font_size)
+    font.setBold(is_bold)
+    font.setItalic(is_italic)
     painter.setFont(font)
 
     offset_x = int(radius * 0.5 + 4)
     offset_y = int(-radius * 0.3 - 4)
+
+    metrics = painter.fontMetrics()
+    text_rect = metrics.boundingRect(text)
+    text_rect.moveTo(int(sx + offset_x), int(sy + offset_y) - metrics.ascent())
+
+    if draw_bg:
+        bg_rect = text_rect.adjusted(-2, -2, 2, 2)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(255, 255, 255, 200))
+        painter.drawRoundedRect(bg_rect, 3, 3)
 
     painter.setPen(QColor(0, 0, 0, 200))
     painter.drawText(int(sx + offset_x + 1), int(sy + offset_y + 1), text)

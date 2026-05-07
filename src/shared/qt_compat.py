@@ -24,7 +24,7 @@ try:
         QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
         QGraphicsItem, QToolBar, QDialogButtonBox
     )
-    from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize
+    from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop
     from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
 
     QT_FRAMEWORK = "PySide6"
@@ -48,7 +48,7 @@ except ImportError as e:
             QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
             QGraphicsItem, QToolBar, QDialogButtonBox
         )
-        from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize
+        from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop
         from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
 
         QT_FRAMEWORK = "PyQt6"
@@ -623,6 +623,11 @@ except ImportError as e:
         
         class QPaintEvent:
             def __init__(self, *args): pass
+            
+        class QEventLoop:
+            def __init__(self, parent=None): pass
+            def exec(self): return 0
+            def quit(self): pass
  
         class QThread:
             def start(self): pass

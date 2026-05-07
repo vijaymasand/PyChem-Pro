@@ -98,6 +98,15 @@ class MolViewer3D(QWidget):
         self._measure_atoms = []   # List of picked atoms for distance/angle
         self._measurements = []    # List of completed measurements
 
+        # Protein/Ligand display state
+        self.show_ligands_in_cartoon = True
+        self.visible_sidechains = set()  # Set of residue sequence numbers
+        self.interaction_lines = []      # List of (atom1_idx, atom2_idx, type, color)
+        self.labels = {}                 # atom_idx -> text
+
+        # Rendering options
+        self.render_mode = 'ball_and_stick'
+
         # Animation
         self._auto_rotate = False
         self._rotation_timer = QTimer(self)
@@ -411,7 +420,7 @@ class MolViewer3D(QWidget):
         self.pan_x = 0
         self.pan_y = 0
 
-    def focus_on_atoms(self, atom_indices):
+    def focus_on_atoms(self, atom_indices, padding_angstroms=0.0):
         """Center the view on the given atoms and zoom in."""
         if not self.molecule or not atom_indices:
             return
@@ -430,6 +439,9 @@ class MolViewer3D(QWidget):
         centroid = np.mean(coords, axis=0)
         span = np.max(coords, axis=0) - np.min(coords, axis=0)
         max_span = max(span) if max(span) > 0 else 1.0
+        
+        # Add padding to the effective span to ensure surrounding area is visible
+        max_span += 2.0 * padding_angstroms
 
         viewport_size = min(self.width(), self.height())
         # Zoom tighter than auto_fit (0.4 vs 0.3) but capped at 100

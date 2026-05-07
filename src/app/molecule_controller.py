@@ -191,6 +191,8 @@ def set_molecule(window, molecule):
     window.color_action.setEnabled(True)
     window.protein_color_action.setEnabled(True)
     window.aromaticity_action.setEnabled(True)
+    if hasattr(window, 'docking_pose_action'):
+        window.docking_pose_action.setEnabled(True)
     for action in window.tools_submenu_actions:
         action.setEnabled(True)
     
