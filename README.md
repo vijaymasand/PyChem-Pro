@@ -196,10 +196,14 @@ python -m venv venv
 venv\Scripts\Activate.ps1
 ```
 
-### 3. Install dependencies
+### 3. Install Dependencies
 
 ```bash
+# Upgrade pip 
 pip install --upgrade pip
+# (If this fails on Windows, use: python -m pip install --upgrade pip)
+
+# Install required packages
 pip install -r requirements.txt
 ```
 
