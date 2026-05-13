@@ -371,14 +371,14 @@ class DockingPoseVisualizerWidget(QWidget):
         
         self.btn_detect = QPushButton("MAP INTERACTIONS")
         self.btn_detect.setStyleSheet(button_style)
-        self.btn_detect.clicked.connect(self.auto_render)
+        self.btn_detect.clicked.connect(lambda: self.auto_render(silent=False))
         llay.addWidget(self.btn_detect)
         
         llay.addSpacing(10)
         
         self.btn_refresh = QPushButton("REFRESH VIEW")
         self.btn_refresh.setStyleSheet(secondary_style)
-        self.btn_refresh.clicked.connect(self.auto_render)
+        self.btn_refresh.clicked.connect(lambda: self.auto_render(silent=False))
         llay.addWidget(self.btn_refresh)
         
         self.btn_options = QPushButton("VISUAL OPTIONS")
@@ -449,7 +449,7 @@ class DockingPoseVisualizerWidget(QWidget):
             cb = QCheckBox(itype)
             cb.setChecked(True)
             cb.setStyleSheet(f"color: {VHM_COLORS.get(itype, '#888888')}; font-weight: bold;")
-            cb.stateChanged.connect(self.auto_render)
+            cb.stateChanged.connect(lambda _: self.auto_render(silent=True))
             self.filter_checks[itype] = cb
 
     def _show_options(self):
@@ -502,7 +502,7 @@ class DockingPoseVisualizerWidget(QWidget):
         self.molecule = molecule
         if self.molecule:
             logging.info(f"DockingPoseVisualizer: Loaded molecule with {len(molecule.atoms)} atoms")
-            self.auto_render()
+            self.auto_render(silent=True)
 
     def _is_donor_acceptor(self, atom: Any) -> bool:
         """
@@ -627,12 +627,13 @@ class DockingPoseVisualizerWidget(QWidget):
             else:
                 data[j]['dither'] = 0
 
-    def auto_render(self) -> None:
+    def auto_render(self, silent: bool = False) -> None:
         """
         Main rendering pipeline for the docking pose visualization using Qt Graphics.
         """
         if not self.molecule:
-            QMessageBox.warning(self, "No Molecule", "Please load a molecule first.")
+            if not silent:
+                QMessageBox.warning(self, "No Molecule", "Please load a molecule first.")
             self.lbl_stats.setText("Status: No molecule loaded.")
             return
         
@@ -644,7 +645,8 @@ class DockingPoseVisualizerWidget(QWidget):
             het_atoms = [a for a in self.molecule.atoms if a.is_hetatm]
             if not het_atoms:
                 self.lbl_stats.setText("Status: No HETATM found.")
-                QMessageBox.information(self, "No Ligand", "No HETATM atoms found in the current molecule.")
+                if not silent:
+                    QMessageBox.information(self, "No Ligand", "No HETATM atoms found in the current molecule.")
                 return
             
             het_groups = {}

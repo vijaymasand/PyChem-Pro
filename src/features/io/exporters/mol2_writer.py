@@ -52,7 +52,7 @@ def write_mol2(molecule, filepath=None):
         sybyl_type = atom.sybyl_type or atom.symbol
         subst_id = 1
         subst_name = "MOL"
-        charge = atom.partial_charge
+        charge = atom.partial_charge or 0.0
 
         # Format: atom_id atom_name x y z atom_type [subst_id subst_name charge]
         line = (

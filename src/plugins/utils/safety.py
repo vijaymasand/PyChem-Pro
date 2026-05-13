@@ -28,7 +28,7 @@ class PluginSandbox:
         
         # Restricted modules that plugins cannot import
         self._restricted_modules = {
-            'os.system', 'subprocess', 'shutil', 'tempfile',
+            'os.system', 'subprocess', 'shutil',
             'socket', 'urllib.request', 'http.client',
             'ftplib', 'smtplib', 'telnetlib', 'pickle',
             'marshal', 'code', 'compile', 'eval', 'exec'
@@ -293,8 +293,8 @@ class PluginValidator:
         
         try:
             # Check if plugin inherits from BasePlugin
-            from ..base_plugin import BasePlugin
-            if not issubclass(plugin_class, BasePlugin):
+            # Using string comparison of class names to avoid issues with different import paths
+            if not any(base.__name__ == 'BasePlugin' for base in plugin_class.__mro__):
                 issues.append("Plugin must inherit from BasePlugin")
             
             # Check required methods

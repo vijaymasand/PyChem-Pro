@@ -418,17 +418,29 @@ class PythonConsole(QWidget):
     def _parse_atomic_term(self, term, mol):
         """Parse a single selection term."""
         
-        # Inequalities: charge <= 0, mass > 12, sasa > 5.0
+        # Inequalities: charge <= 0, mass > 12, sasa > 5.0, mlpc < 0
         import re
-        ineq_match = re.match(r'^(charge|mass|sasa)\s*(==|<=|>=|<|>|!=)\s*([+-]?\d+(?:\.\d+)?)$', term)
+        ineq_match = re.match(r'^(charge|mass|sasa|mlpc|logpc)\s*(==|<=|>=|<|>|!=)\s*([+-]?\d+(?:\.\d+)?)$', term)
         if ineq_match:
             prop, op, val_str = ineq_match.groups()
             val = float(val_str)
             result = set()
+            
+            # Lazy lipophilicity calculation
+            lipo_vals = None
+            if prop in ('mlpc', 'logpc'):
+                try:
+                    from src.features.cheminformatics.services.lipophilicity_service import LipophilicityService
+                    service = LipophilicityService(mol)
+                    lipo_vals = service.get_atomic_contributions()
+                except Exception:
+                    lipo_vals = [0.0] * len(mol.atoms)
+
             for a in mol.atoms:
                 if prop == 'charge': p_val = a.partial_charge or 0.0
                 elif prop == 'mass': p_val = a.mass
                 elif prop == 'sasa': p_val = getattr(a, 'sasa', 0.0)
+                elif prop in ('mlpc', 'logpc'): p_val = lipo_vals[a.index] if lipo_vals else 0.0
                 
                 match = False
                 if op == '==': match = p_val == val
@@ -640,6 +652,14 @@ class PythonConsole(QWidget):
                 if prop == 'mass': total += a.mass
                 elif prop == 'charge': total += a.partial_charge or 0.0
                 elif prop == 'sasa': total += getattr(a, 'sasa', 0.0)
+                elif prop in ('mlpc', 'logpc'):
+                    try:
+                        from src.features.cheminformatics.services.lipophilicity_service import LipophilicityService
+                        service = LipophilicityService(mol)
+                        contribs = service.get_atomic_contributions()
+                        total = sum(contribs[idx] for idx in res)
+                        break # already summed
+                    except Exception: pass
                 elif hasattr(a, prop):
                     val = getattr(a, prop)
                     if isinstance(val, (int, float)):
@@ -842,6 +862,7 @@ class PythonConsole(QWidget):
             "  sele('charge < 0')     Negative partial charge\n"
             "  sele('mass > 12')      Mass greater than 12 Da\n"
             "  sele('sasa > 5.0')     Solvent exposed atoms\n"
+            "  sele('mlpc < 0')       Hydrophilic atoms (numeric)\n"
             "  sele('within 5.0 COM') Within 5A of Center of Mass\n"
             "  sele('heavy')          Non-hydrogen atoms\n"
             "  sele('halogen')        F, Cl, Br, I\n"

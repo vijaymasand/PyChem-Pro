@@ -24,7 +24,7 @@ try:
         QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
         QGraphicsItem, QToolBar, QDialogButtonBox
     )
-    from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop
+    from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop, QUrl
     from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
 
     QT_FRAMEWORK = "PySide6"
@@ -48,7 +48,7 @@ except ImportError as e:
             QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
             QGraphicsItem, QToolBar, QDialogButtonBox
         )
-        from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop
+        from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop, QUrl
         from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
 
         QT_FRAMEWORK = "PyQt6"
@@ -347,7 +347,20 @@ except ImportError as e:
             def setSingleStep(self, step): pass
             def setFixedWidth(self, width): pass
             def setStyleSheet(self, style): pass
-        class QDoubleSpinBox: pass
+        class QFormLayout:
+            def __init__(self, parent=None): pass
+            def addRow(self, label, field): pass
+            def setContentsMargins(self, l, t, r, b): pass
+            def setSpacing(self, s): pass
+        class QDoubleSpinBox:
+            def __init__(self, parent=None): pass
+            def setRange(self, minimum, maximum): pass
+            def setValue(self, value): pass
+            def value(self): return 0.0
+            def setSingleStep(self, step): pass
+            def setDecimals(self, d): pass
+            def setFixedWidth(self, width): pass
+            def setStyleSheet(self, style): pass
         class QTableWidget:
             def __init__(self, parent=None): 
                 self._horizontal_header = QHeaderView()
@@ -684,6 +697,11 @@ except ImportError as e:
                 def connect(self, slot): pass
                 def emit(self): pass
         
+        class QActionGroup:
+            def __init__(self, parent=None): pass
+            def setExclusive(self, exclusive): pass
+            def addAction(self, action): pass
+        
         class QKeySequence:
             def __init__(self, key): pass
             def toString(self): return ""
@@ -704,19 +722,25 @@ except ImportError as e:
                 Paste = "Paste"
                 SelectAll = "SelectAll"
         
-        class QFontMetrics:
-            def __init__(self, font=None): pass
-
-        class QFontMetricsF:
-            def __init__(self, font): pass
-            def height(self): return 12
-            def width(self, text): return len(text) * 8
-        
         class QIcon:
-            def __init__(self): pass
+            def __init__(self, path=None): pass
+            def setPixmap(self, pixmap): pass
         
         class QPixmap:
+            def __init__(self, path=None): pass
+        
+        class QPalette:
             def __init__(self): pass
+            def setColor(self, group, color): pass
+        
+        class QFontMetrics:
+            def __init__(self, font=None): pass
+        
+        class QFontMetricsF:
+            def __init__(self, font=None): pass
+        
+        class Corner:
+            TopRightCorner = 1
         
         class QPainter:
             def __init__(self): pass

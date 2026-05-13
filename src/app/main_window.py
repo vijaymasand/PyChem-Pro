@@ -17,7 +17,9 @@ from src.shared.ui.theme import (
     save_theme_preference, theme_signals, current_mode,
 )
 from src.features.control_panel.ui.input_panel import InputPanel
-from src.app.plugin_interface import PluginInterface
+from src.app.enhanced_plugin_interface import EnhancedPluginManagerWidget
+from src.plugins.enhanced_plugin_manager import EnhancedPluginManager
+from src.plugins.plugin_config import PluginConfigManager
 from src.core.domain.models.bond import BondType
 from src.features.sketcher_2d.ui.sketcher_widget import SketcherWidget
 from src.features.visualization_3d.services.docking_pose_service import DockingPoseService
@@ -150,24 +152,71 @@ class MainWindow(QMainWindow):
     # ── Plugin system ────────────────────────────────────────────
 
     def _init_plugin_system(self):
-        """Initialize the plugin system."""
+        """Initialize the enhanced plugin system."""
         try:
-            self.plugin_interface = PluginInterface(self)
-            from PySide6.QtCore import QTimer
+            # Initialize plugin configuration manager
+            self.plugin_config_manager = PluginConfigManager()
+            
+            # Initialize enhanced plugin manager
+            self.plugin_manager = EnhancedPluginManager()
+            
+            # Set up plugin API integration
+            from src.plugins.utils.integration import PluginIntegrationAPI
+            plugin_api = PluginIntegrationAPI(self)
+            self.plugin_manager.set_api(plugin_api)
+            
+            # Initialize enhanced plugin interface
+            self.enhanced_plugin_interface = EnhancedPluginManagerWidget(self.plugin_manager)
+            
+            # Use QTimer from qt_compat
             QTimer.singleShot(100, self._delayed_init_plugin_system)
         except Exception as e:
-            print(f"Error preparing plugin system: {e}")
-            self.plugin_interface = None
+            traceback.print_exc()
+            print(f"Error preparing enhanced plugin system: {e}")
+            self.plugin_manager = None
+            self.enhanced_plugin_interface = None
 
     def _delayed_init_plugin_system(self):
         """Perform the heavy plugin discovery after the main event loop has started."""
         try:
-            if self.plugin_interface:
-                self.plugin_interface.initialize_plugin_system()
+            if self.plugin_manager:
+                # Discover all plugins (bundled + user)
+                self.plugin_manager.discover_all_plugins()
+                
+                # Auto-load enabled plugins
+                self._auto_load_plugins()
+                
+                # Refresh UI
                 self._refresh_plugin_list()
                 self._refresh_plugin_tabs()
         except Exception as e:
-            print(f"Error initializing plugin system: {e}")
+            print(f"Error initializing enhanced plugin system: {e}")
+    
+    def _auto_load_plugins(self):
+        """Auto-load plugins that are configured to auto-load."""
+        try:
+            all_plugins = self.plugin_manager.get_all_plugins()
+            plugin_configs = self.plugin_config_manager.get_all_plugin_configs()
+            
+            # Get load order based on dependencies
+            plugin_names = list(all_plugins.keys())
+            load_order = self.plugin_config_manager.get_load_order(plugin_names)
+            
+            loaded_count = 0
+            for plugin_name in load_order:
+                # Check if plugin should auto-load
+                if self.plugin_config_manager.should_auto_load(plugin_name):
+                    # Check if plugin is enabled
+                    if self.plugin_config_manager.is_plugin_enabled(plugin_name):
+                        if not self.plugin_manager.is_plugin_loaded(plugin_name):
+                            if self.plugin_manager.load_plugin(plugin_name):
+                                loaded_count += 1
+            
+            if loaded_count > 0:
+                self.status_bar.showMessage(f"Auto-loaded {loaded_count} plugins", 3000)
+                
+        except Exception as e:
+            print(f"Error auto-loading plugins: {e}")
 
     # ── Central widget ───────────────────────────────────────────
 
@@ -340,79 +389,83 @@ class MainWindow(QMainWindow):
         # Populate plugin list
         self._refresh_plugin_list()
 
-        # Connect selection change
-        self.plugin_list.currentRowChanged.connect(self._on_plugin_selected)
-
     def _refresh_plugin_list(self):
-        """Refresh the plugin list in the dock widget."""
+        """Refresh plugin list in dock widget."""
         self.plugin_list.clear()
-        if self.plugin_interface:
+        if self.plugin_manager:
             try:
-                pm = self.plugin_interface.get_plugin_manager()
-                plugins = pm.get_all_plugins()
-                loaded = pm.get_loaded_plugins()
+                plugins = self.plugin_manager.get_all_plugins()
+                loaded = self.plugin_manager.get_loaded_plugins()
                 for name, meta in plugins.items():
-                    status = "\u2713" if name in loaded else "\u25cb"
-                    self.plugin_list.addItem(f"{status}  {name}")
+                    item = QListWidgetItem(name)
+                    if name in loaded:
+                        item.setForeground(QColor("green"))
+                        # Add badge for user plugins
+                        if self.plugin_manager.is_user_plugin(name):
+                            item.setText(f"{name} (User)")
+                    self.plugin_list.addItem(item)
             except Exception as e:
-                self.plugin_list.addItem(f"Error: {e}")
+                print(f"Error refreshing plugin list: {e}")
 
     def _on_plugin_selected(self, row):
         """Show details for selected plugin."""
-        if row < 0 or not self.plugin_interface:
+        if row < 0 or not self.plugin_manager:
             self.plugin_detail.clear()
             return
         try:
-            pm = self.plugin_interface.get_plugin_manager()
-            plugins = pm.get_all_plugins()
+            plugins = self.plugin_manager.get_all_plugins()
             names = list(plugins.keys())
             if row < len(names):
                 name = names[row]
                 meta = plugins[name]
                 info = meta.info
-                loaded = pm.get_loaded_plugins()
+                loaded = self.plugin_manager.get_loaded_plugins()
                 details = f"Name: {name}\n"
                 details += f"Status: {'Loaded' if name in loaded else 'Not loaded'}\n"
                 details += f"Version: {info.version}\n"
                 details += f"Type: {info.plugin_type.value if hasattr(info.plugin_type, 'value') else info.plugin_type}\n"
                 details += f"Description: {info.description}\n"
                 details += f"Author: {info.author}\n"
+                if self.plugin_manager.is_user_plugin(name):
+                    details += f"Source: User Plugin\n"
+                else:
+                    details += f"Source: Bundled Plugin\n"
                 self.plugin_detail.setPlainText(details)
         except Exception:
             pass
 
     def _load_selected_plugin(self):
-        """Load the currently selected plugin."""
+        """Load currently selected plugin."""
         row = self.plugin_list.currentRow()
-        if row < 0 or not self.plugin_interface:
+        if row < 0 or not self.plugin_manager:
             return
         try:
-            pm = self.plugin_interface.get_plugin_manager()
-            plugins = pm.get_all_plugins()
+            plugins = self.plugin_manager.get_all_plugins()
             names = list(plugins.keys())
             if row < len(names):
-                pm.load_plugin(names[row])
-                self._refresh_plugin_list()
-                self._refresh_plugin_tabs()
-                self.status_bar.showMessage(f"Plugin '{names[row]}' loaded")
+                plugin_name = names[row].replace(" (User)", "")
+                if self.plugin_manager.load_plugin(plugin_name):
+                    self._refresh_plugin_list()
+                    self._refresh_plugin_tabs()
+                    self.status_bar.showMessage(f"Plugin '{plugin_name}' loaded")
         except Exception as e:
             self.status_bar.showMessage(f"Error loading plugin: {e}")
 
     def _unload_selected_plugin(self):
-        """Unload the currently selected plugin."""
+        """Unload currently selected plugin."""
         row = self.plugin_list.currentRow()
-        if row < 0 or not self.plugin_interface:
+        if row < 0 or not self.plugin_manager:
             return
         try:
-            pm = self.plugin_interface.get_plugin_manager()
-            plugins = pm.get_all_plugins()
+            plugins = self.plugin_manager.get_all_plugins()
             names = list(plugins.keys())
             if row < len(names):
-                pm.unload_plugin(names[row])
-                self._refresh_plugin_list()
-                self._refresh_plugin_tabs()
-                self._on_plugin_selected(row) # Refresh details text immediately
-                self.status_bar.showMessage(f"Plugin '{names[row]}' unloaded")
+                plugin_name = names[row].replace(" (User)", "")
+                if self.plugin_manager.unload_plugin(plugin_name):
+                    self._refresh_plugin_list()
+                    self._refresh_plugin_tabs()
+                    self._on_plugin_selected(row) # Refresh details text immediately
+                    self.status_bar.showMessage(f"Plugin '{plugin_name}' unloaded")
         except Exception as e:
             self.status_bar.showMessage(f"Error unloading plugin: {e}")
 
@@ -423,6 +476,48 @@ class MainWindow(QMainWindow):
         else:
             self._refresh_plugin_list()
             self.plugin_dock.show()
+
+    def _refresh_plugins(self):
+        """Discover and refresh the plugin list."""
+        if self.plugin_manager:
+            self.plugin_manager.discover_all_plugins()
+            self._refresh_plugin_list()
+            self.status_bar.showMessage("Plugins refreshed")
+
+    def _load_all_plugins(self):
+        """Load all discovered plugins."""
+        if self.plugin_manager:
+            plugins = self.plugin_manager.get_all_plugins()
+            loaded_count = 0
+            for name in plugins:
+                if self.plugin_manager.load_plugin(name):
+                    loaded_count += 1
+            self._refresh_plugin_list()
+            self._refresh_plugin_tabs()
+            self.status_bar.showMessage(f"Loaded {loaded_count} plugins")
+
+    def _unload_all_plugins(self):
+        """Unload all loaded plugins."""
+        if self.plugin_manager:
+            loaded = self.plugin_manager.get_loaded_plugins()
+            names = list(loaded.keys())
+            unloaded_count = 0
+            for name in names:
+                if self.plugin_manager.unload_plugin(name):
+                    unloaded_count += 1
+            self._refresh_plugin_list()
+            self._refresh_plugin_tabs()
+            self.status_bar.showMessage(f"Unloaded {unloaded_count} plugins")
+
+    def _refresh_plugin_tabs(self):
+        """Update the plugin tabs to match loaded plugins."""
+        # Remove all tabs from index 2 onwards (plugin tabs)
+        # 0: 3D View, 1: 2D View
+        while self.viewer_tabs.count() > 2:
+            self.viewer_tabs.removeTab(2)
+        
+        # Recreate tabs for all loaded plugins
+        self._create_plugin_tabs()
 
     # ── Status bar ───────────────────────────────────────────────
 
@@ -490,7 +585,9 @@ class MainWindow(QMainWindow):
         _mol_ctrl.show_substructure_dialog(self)
 
     def _notify_plugins_molecule_changed(self):
-        _mol_ctrl.notify_plugins_molecule_changed(self)
+        """Notify all loaded plugins about molecule changes."""
+        if self.plugin_manager and self.molecule:
+            self.plugin_manager.set_current_molecule(self.molecule)
 
     # ── File operations delegates ────────────────────────────────
 
@@ -673,6 +770,17 @@ class MainWindow(QMainWindow):
     def _copy_smiles_to_clipboard(self):
         _chem.copy_smiles_to_clipboard(self)
 
+    # ── Lipophilicity Actions ─────────────────────────────────────
+
+    def _calculate_logp_action(self):
+        _chem.calculate_logp_action(self)
+
+    def _show_lipophilic_contributions(self):
+        _chem.show_lipophilic_contributions(self)
+
+    def _color_by_lipophilicity(self):
+        _chem.color_by_lipophilicity(self)
+
     # ── Viewer coordinator delegates ─────────────────────────────
 
     def _toggle_hydrogens(self):
@@ -760,11 +868,11 @@ class MainWindow(QMainWindow):
     # ── Plugin management ────────────────────────────────────────
 
     def _show_plugin_manager(self):
-        """Show the plugin manager dialog."""
-        if self.plugin_interface:
-            self.plugin_interface.show_plugin_manager()
+        """Show enhanced plugin manager dialog."""
+        if self.enhanced_plugin_interface:
+            self.enhanced_plugin_interface.show()
         else:
-            QMessageBox.warning(self, "Plugins", "Plugin system not available")
+            QMessageBox.warning(self, "Plugins", "Enhanced plugin system not available")
 
     def _show_installed_plugins_dialog(self):
         """Show the installed plugins selection dialog."""
@@ -772,7 +880,7 @@ class MainWindow(QMainWindow):
             from src.app.installed_plugins_dialog import show_installed_plugins_dialog
 
             result, active_plugins = show_installed_plugins_dialog(
-                self.plugin_interface,
+                self.plugin_manager,
                 self
             )
 
@@ -787,27 +895,28 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Could not open installed plugins dialog: {str(e)}")
 
     def _refresh_plugins(self):
-        """Refresh the plugin system."""
-        if self.plugin_interface:
+        """Refresh enhanced plugin system."""
+        if self.plugin_manager:
             try:
-                self.plugin_interface.initialize_plugin_system()
+                self.plugin_manager.discover_all_plugins()
+                self._auto_load_plugins()
                 self._refresh_plugin_tabs()
-                QMessageBox.information(self, "Plugins", "Plugin system refreshed successfully")
+                QMessageBox.information(self, "Plugins", "Enhanced plugin system refreshed successfully")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to refresh plugins:\n{str(e)}")
         else:
-            QMessageBox.warning(self, "Plugins", "Plugin system not available")
+            QMessageBox.warning(self, "Plugins", "Enhanced plugin system not available")
 
     def _load_all_plugins(self):
         """Load all available plugins."""
-        if self.plugin_interface and self.plugin_interface.plugin_manager:
+        if self.plugin_manager:
             try:
-                plugins = self.plugin_interface.plugin_manager.discover_plugins()
+                plugins = self.plugin_manager.get_all_plugins()
                 loaded_count = 0
 
                 for plugin_name in plugins.keys():
-                    if not self.plugin_interface.plugin_manager.is_plugin_loaded(plugin_name):
-                        if self.plugin_interface.plugin_manager.load_plugin(plugin_name):
+                    if not self.plugin_manager.is_plugin_loaded(plugin_name):
+                        if self.plugin_manager.load_plugin(plugin_name):
                             loaded_count += 1
 
                 self._refresh_plugin_tabs()
@@ -815,18 +924,18 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load plugins:\n{str(e)}")
         else:
-            QMessageBox.warning(self, "Plugins", "Plugin system not available")
+            QMessageBox.warning(self, "Plugins", "Enhanced plugin system not available")
 
     def _unload_all_plugins(self):
         """Unload all loaded plugins."""
-        if self.plugin_interface and self.plugin_interface.plugin_manager:
+        if self.plugin_manager:
             try:
-                plugins = self.plugin_interface.plugin_manager.discover_plugins()
+                plugins = self.plugin_manager.get_all_plugins()
                 unloaded_count = 0
 
                 for plugin_name in plugins.keys():
-                    if self.plugin_interface.plugin_manager.is_plugin_loaded(plugin_name):
-                        if self.plugin_interface.plugin_manager.unload_plugin(plugin_name):
+                    if self.plugin_manager.is_plugin_loaded(plugin_name):
+                        if self.plugin_manager.unload_plugin(plugin_name):
                             unloaded_count += 1
 
                 self._refresh_plugin_tabs()
@@ -834,15 +943,38 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to unload plugins:\n{str(e)}")
         else:
-            QMessageBox.warning(self, "Plugins", "Plugin system not available")
+            QMessageBox.warning(self, "Plugins", "Enhanced plugin system not available")
 
     def _refresh_plugin_tabs(self):
         """Refresh plugin tabs, preserving the core viewer tabs."""
-        if self.plugin_interface and hasattr(self, 'viewer_tabs'):
+        if self.plugin_manager and hasattr(self, 'viewer_tabs'):
             # Preserve the first 3 core tabs: 3D View, 2D View, 2D-Sketcher
             while self.viewer_tabs.count() > 3:
                 self.viewer_tabs.removeTab(3)
-            self.plugin_interface.create_plugin_tabs(self.viewer_tabs)
+            self._create_plugin_tabs()
+
+    def _create_plugin_tabs(self):
+        """Create tabs for all loaded plugins."""
+        if not self.plugin_manager:
+            return
+            
+        loaded_plugins = self.plugin_manager.get_loaded_plugins()
+        for plugin_name, plugin in loaded_plugins.items():
+            try:
+                widget = plugin.create_widget()
+                if hasattr(widget, 'get_widget'):
+                    # If it has get_widget, use it (standard PluginWidget)
+                    tab_widget = widget.get_widget()
+                elif hasattr(widget, 'widget') and widget.widget is not widget and isinstance(widget.widget, QWidget):
+                    # If it has a .widget attribute that is a different object and is a QWidget
+                    tab_widget = widget.widget
+                else:
+                    # Otherwise assume the object itself is the widget
+                    tab_widget = widget
+                
+                self.viewer_tabs.addTab(tab_widget, plugin_name)
+            except Exception as e:
+                print(f"Error creating tab for plugin {plugin_name}: {e}")
 
 
     # ── About ────────────────────────────────────────────────────

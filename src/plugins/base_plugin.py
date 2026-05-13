@@ -98,6 +98,14 @@ class BasePlugin(ABC):
         """Get plugin settings."""
         return self._settings
     
+    def log_info(self, message: str):
+        """Log an informational message."""
+        self.logger.info(message)
+        
+    def log_error(self, message: str):
+        """Log an error message."""
+        self.logger.error(message)
+    
     # -------------------------------------------------------------------------
     # Abstract Methods (must be implemented by plugins)
     # -------------------------------------------------------------------------

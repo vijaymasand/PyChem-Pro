@@ -159,6 +159,8 @@ class MolViewer2D(QWidget):
             # Check if coordinates already exist on atoms (e.g. from parser x2d/y2d or sketcher x/y)
             has_x2d = all(hasattr(a, 'x2d') and a.x2d is not None for a in molecule.atoms if a.symbol != 'H')
             has_xy = all(hasattr(a, 'x') and a.x is not None for a in molecule.atoms if a.symbol != 'H')
+            # Detect if molecule has 3D information (non-zero Z coordinates)
+            has_3d = any(getattr(a, 'z', 0) != 0 for a in molecule.atoms)
 
             if has_x2d:
                 # Use the native OASA coordinates directly — these are the
@@ -168,8 +170,10 @@ class MolViewer2D(QWidget):
                 if _DEBUG: print("[DEBUG] Using native OASA x2d/y2d coordinates.")
                 self.coords_2d = {a.index: [a.x2d, a.y2d] for a in molecule.atoms
                                   if hasattr(a, 'x2d') and a.x2d is not None}
-            elif has_xy and not has_x2d:
-                # Use manual coordinates from sketcher
+            elif has_xy and not has_x2d and not has_3d:
+                # Use manual coordinates from sketcher ONLY if it's a flat 2D molecule.
+                # If it has 3D info (has_3d=True), we fall through to regenerate
+                # optimized 2D coordinates via OASA.
                 if _DEBUG: print("[DEBUG] Using manual coordinates (x, y) from sketcher.")
                 self.coords_2d = {a.index: [a.x, -a.y] for a in molecule.atoms}
             

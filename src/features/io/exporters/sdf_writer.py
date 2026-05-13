@@ -39,8 +39,10 @@ def write_mol(molecule, filepath=None):
     num_bonds = len(molecule.bonds)
 
     # Count atoms with charges and isotopes for properties block
-    charged_atoms = [(i, a.formal_charge) for i, a in enumerate(molecule.atoms) if a.formal_charge != 0]
-    isotope_atoms = [(i, a.isotope) for i, a in enumerate(molecule.atoms) if a.isotope > 0]
+    charged_atoms = [(i, a.formal_charge) for i, a in enumerate(molecule.atoms) 
+                     if a.formal_charge is not None and a.formal_charge != 0]
+    isotope_atoms = [(i, a.isotope) for i, a in enumerate(molecule.atoms) 
+                     if a.isotope is not None and a.isotope > 0]
 
     # Counts line format: aaabbblllfffcccsssxxxrrrpppiiimmmvvvvvv
     counts = f"{num_atoms:3d}{num_bonds:3d}  0  0  0  0  0  0  0  0999 V2000"
@@ -149,7 +151,7 @@ def write_sdf(molecule, filepath=None, data_fields=None):
     lines.append("")
 
     # Add partial charges if computed
-    charges = [f"{a.partial_charge:.4f}" for a in molecule.atoms]
+    charges = [f"{(a.partial_charge or 0.0):.4f}" for a in molecule.atoms]
     if any(float(c) != 0.0 for c in charges):
         lines.append("> <PARTIAL_CHARGES>")
         lines.append(" ".join(charges))

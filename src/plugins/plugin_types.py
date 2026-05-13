@@ -126,6 +126,12 @@ class PluginMetadata:
     instance: Optional['BasePlugin'] = None
     """Plugin instance (None if not loaded)."""
     
+    source: Optional[str] = None
+    """Source of the plugin ('bundled' or 'user')."""
+    
+    is_package: bool = False
+    """True if the plugin is a package (directory), False if it's a single file."""
+    
     status: PluginStatus = PluginStatus.INACTIVE
     """Current plugin status."""
     

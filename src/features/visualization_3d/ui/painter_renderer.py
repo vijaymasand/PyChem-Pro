@@ -205,8 +205,12 @@ class PainterRenderer:
             depth_factor = 1.0 + sz * 0.02
             display_r *= max(0.5, min(1.5, depth_factor))
 
-            # Color from element
-            color = _hex_to_rgb(atom.element.color)
+            # Color from element or custom override
+            custom_colors = getattr(v, 'custom_atom_colors', {})
+            if atom.index in custom_colors:
+                color = custom_colors[atom.index]
+            else:
+                color = _hex_to_rgb(atom.element.color)
 
             projected.append((atom.index, sx, sy, sz, display_r, color))
 
@@ -317,9 +321,7 @@ class PainterRenderer:
                             continue
                         self._draw_atom_sphere(v, painter, atom_idx, sx, sy, sz, radius, color)
             
-            # DRAW LABELS
-            if getattr(v, 'labels', {}):
-                self._draw_labels(v, painter, projected)
+
         else:
             # Optimize rendering for VERY large molecules only.
             # Below 8000 atoms we still use gradient spheres so PDB proteins
@@ -349,6 +351,10 @@ class PainterRenderer:
                         self._draw_atom_dot(painter, sx, sy, radius, color)
                     else:
                         self._draw_atom_sphere(v, painter, atom_idx, sx, sy, sz, radius, color)
+
+        # DRAW CUSTOM LABELS (e.g. lipophilic contributions)
+        if getattr(v, 'labels', {}):
+            self._draw_labels(v, painter, projected)
 
         # Draw selection highlights
         if v.selected_atoms:
@@ -501,6 +507,14 @@ class PainterRenderer:
         proj_map = {p[0]: p for p in projected}
         cam = getattr(v, 'custom_atom_modes', {})
 
+        # Pre-calculate ring information for 'inside-ring' rendering
+        rings = v.molecule.find_rings()
+        bond_to_ring = {}
+        for ring in rings:
+            for i in range(len(ring)):
+                a, b = ring[i], ring[(i+1) % len(ring)]
+                bond_to_ring[frozenset([a, b])] = ring
+
         # Culling bounds (with generous margin for long bonds)
         _bond_cull = width is not None and height is not None
         _bond_margin = 100
@@ -561,6 +575,18 @@ class PainterRenderer:
                 dy /= length
                 offset = base_width * 0.9
 
+                # Inside-ring heuristic
+                ring = bond_to_ring.get(frozenset([i, j]))
+                if ring:
+                    # Projected ring center
+                    rsx = sum(proj_map[idx][1] for idx in ring) / len(ring)
+                    rsy = sum(proj_map[idx][2] for idx in ring) / len(ring)
+                    # Midpoint of bond
+                    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+                    # Dot product of offset vector (dx, dy) and vector to center (rsx-mx, rsy-my)
+                    if dx * (rsx - mx) + dy * (rsy - my) < 0:
+                        dx, dy = -dx, -dy
+
                 for sign in (-1, 1):
                     ox = dx * offset * sign
                     oy = dy * offset * sign
@@ -590,6 +616,15 @@ class PainterRenderer:
                 dy /= length
                 offset = base_width * 0.7
 
+                # Inside-ring heuristic
+                ring = bond_to_ring.get(frozenset([i, j]))
+                if ring:
+                    rsx = sum(proj_map[idx][1] for idx in ring) / len(ring)
+                    rsy = sum(proj_map[idx][2] for idx in ring) / len(ring)
+                    mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+                    if dx * (rsx - mx) + dy * (rsy - my) < 0:
+                        dx, dy = -dx, -dy
+
                 self._draw_bond_line(painter, x1, y1, x2, y2,
                                      c1, c2, base_width * 0.7, depth_shade, is_custom=is_custom)
 
@@ -608,9 +643,13 @@ class PainterRenderer:
     # ─── Labels ──────────────────────────────────────────────────
 
     def _draw_label(self, v, painter, atom_idx, sx, sy, radius):
+        # Skip symbol if a custom label (e.g. lipophilicity) is already assigned to this atom
+        if atom_idx in getattr(v, 'labels', {}):
+            return
+            
         from src.features.visualization_3d.services.atom_rendering import draw_label
         atom = v.molecule.atoms[atom_idx]
-        draw_label(painter, atom.symbol, sx, sy, radius, v.label_font_size, getattr(v, '_export_scale', 1.0))
+        draw_label(painter, atom.symbol, sx, sy, radius, v.label_font_size, getattr(v, '_export_scale', 1.0), v.label_color)
 
     def _draw_residue_label(self, v, painter, text, sx, sy, color, radius, settings=None):
         from src.features.visualization_3d.services.atom_rendering import draw_residue_label
@@ -717,19 +756,14 @@ class PainterRenderer:
             painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
     def _draw_labels(self, v, painter, projected):
-        """Draw text labels for specific atoms."""
+        """Draw text labels for specific atoms (e.g. lipophilic contributions)."""
+        from src.features.visualization_3d.services.atom_rendering import draw_label
         proj_map = {p[0]: p for p in projected}
-        font = QFont("Segoe UI", 9, QFont.Weight.Bold)
-        painter.setFont(font)
         
         for idx, text in v.labels.items():
             if idx in proj_map:
                 _, sx, sy, sz, radius, _ = proj_map[idx]
-                # Draw subtle shadow for readability
-                painter.setPen(QColor(0, 0, 0, 200))
-                painter.drawText(sx + radius + 1, sy - radius + 1, text)
-                painter.setPen(QColor(255, 255, 255))
-                painter.drawText(sx + radius, sy - radius, text)
+                draw_label(painter, text, sx, sy, radius, v.label_font_size, getattr(v, '_export_scale', 1.0), v.label_color)
 
     # ─── Measurements ────────────────────────────────────────────
 

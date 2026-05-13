@@ -76,8 +76,21 @@ class LipophilicityService:
         Returns:
             float: Calculated logP value.
         """
-        if not self.molecule.atoms:
+        contributions = self.get_atomic_contributions()
+        if not contributions:
             return 0.0
+            
+        return sum(contributions) + LOGP_CONSTANTS['CONSTANT']
+
+    def get_atomic_contributions(self) -> List[float]:
+        """
+        Calculate atomic logP contributions.
+        
+        Returns:
+            List[float]: LogP contribution for each atom.
+        """
+        if not self.molecule.atoms:
+            return []
             
         # 1. Assign fragmental values to atoms
         self._assign_fragment_values()
@@ -85,20 +98,52 @@ class LipophilicityService:
         # 2. Generate Solvent Accessible Surface (ASA) points
         points = self._generate_asa_points()
         if len(points) == 0:
-            return 0.0
+            return [0.0] * len(self.molecule.atoms)
             
         # 3. Calculate MLP at each surface point
-        mlp_values = self._calculate_mlp(points)
+        # We need the individual potentials for each atom at each point
+        n_atoms = len(self.molecule.atoms)
+        atom_coords = np.array([[a.x, a.y, a.z] for a in self.molecule.atoms])
+        frag_vals = np.array(self.atom_fragment_values)
         
-        # 4. Sum positive and negative potentials and apply factors
-        sum_plus = np.sum(mlp_values[mlp_values > 0])
-        sum_minus = np.sum(mlp_values[mlp_values < 0])
+        f_const = LOGP_CONSTANTS['F_CONST']
+        f_cutoff = LOGP_CONSTANTS['F_CUTOFF']
+        f_delta = LOGP_CONSTANTS['F_DELTA']
+        plus_factor = LOGP_CONSTANTS['PLUS']
+        minus_factor = LOGP_CONSTANTS['MINUS']
+        d_cutoff = LOGP_CONSTANTS['D_CUTOFF']
         
-        logp = (sum_plus * LOGP_CONSTANTS['PLUS'] + 
-                sum_minus * LOGP_CONSTANTS['MINUS'] + 
-                LOGP_CONSTANTS['CONSTANT'])
+        # We'll accumulate contributions per atom
+        atomic_contributions = np.zeros(n_atoms)
         
-        return float(logp)
+        chunk_size = 1000
+        for i in range(0, len(points), chunk_size):
+            end = min(i + chunk_size, len(points))
+            chunk_points = points[i:end]
+            
+            # dists: (chunk_points, n_atoms)
+            diffs = chunk_points[:, np.newaxis, :] - atom_coords[np.newaxis, :, :]
+            dists = np.sqrt(np.sum(diffs**2, axis=2))
+            
+            # Fermi-type distance function
+            f_num = 1 + np.exp((-f_const * f_cutoff) / f_delta)
+            potentials = f_num / (1 + np.exp((f_const * (dists - f_cutoff)) / f_delta))
+            potentials[dists > d_cutoff] = 0.0
+            
+            # mlp_p: (chunk_points,)
+            mlp_p = np.sum(potentials * frag_vals, axis=1)
+            
+            # factor_p: (chunk_points,)
+            factors = np.where(mlp_p > 0, plus_factor, minus_factor)
+            
+            # Contribution per point per atom: factor_p * potential_pi * frag_val_i
+            # We want to sum over p: sum_p (factors * potentials) * frag_vals
+            # (factors[:, np.newaxis] * potentials): (chunk_points, n_atoms)
+            # sum over axis 0: (n_atoms,)
+            chunk_contribs = np.sum(factors[:, np.newaxis] * potentials, axis=0) * frag_vals
+            atomic_contributions += chunk_contribs
+            
+        return atomic_contributions.tolist()
 
     def _assign_fragment_values(self):
         """

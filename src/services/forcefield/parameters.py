@@ -1,180 +1,488 @@
-# src/services/forcefield/parameters.py
 """
-MMFF94 parameter tables — consolidated empirical data.
+MMFF94 parameter loader -- type-keyed, sourced from Jmol's mmff94.par.txt.
 
-All parameters in one file for easy reference and modification.
+Public API: `get_bond_params`, `get_angle_params`, `get_sb_params`,
+`get_torsion_params`, `get_oop_params`, `get_vdw_params`, `get_bci`,
+`get_pbci`, `get_atom_props`. All keyed by MMFF94 atom type numbers (int).
+
+Loading is lazy: the first call triggers a parse + pickle-cache write;
+subsequent calls reuse the in-memory dicts.
 """
+from __future__ import annotations
 
-# ─── Bond Stretching ───────────────────────────────────────────
-# Key: (symbol1, symbol2, bond_order) -> (r0_angstrom, kb_force_constant)
-MMFF94_BOND = {
-    ('C', 'C', 1): (1.52, 4.4),
-    ('C', 'C', 2): (1.33, 9.6),
-    ('C', 'C', 3): (1.20, 15.0),
-    ('C', 'C', 1.5): (1.39, 7.0),
-    ('C', 'N', 1): (1.47, 4.2),
-    ('C', 'N', 2): (1.27, 9.0),
-    ('C', 'N', 1.5): (1.34, 6.5),
-    ('C', 'O', 1): (1.43, 5.0),
-    ('C', 'O', 2): (1.22, 11.5),
-    ('C', 'O', 1.5): (1.30, 8.0),
-    ('C', 'S', 1): (1.82, 3.2),
-    ('C', 'S', 2): (1.60, 7.5),
-    ('C', 'F', 1): (1.35, 5.5),
-    ('C', 'Cl', 1): (1.77, 3.0),
-    ('C', 'Br', 1): (1.94, 2.5),
-    ('C', 'I', 1): (2.14, 2.0),
-    ('C', 'H', 1): (1.09, 4.8),
-    ('C', 'P', 1): (1.85, 3.0),
-    ('N', 'N', 1): (1.45, 3.8),
-    ('N', 'N', 2): (1.25, 9.5),
-    ('N', 'O', 1): (1.40, 4.0),
-    ('N', 'O', 2): (1.21, 11.0),
-    ('N', 'H', 1): (1.01, 6.0),
-    ('N', 'S', 1): (1.75, 3.5),
-    ('O', 'O', 1): (1.48, 3.0),
-    ('O', 'H', 1): (0.96, 7.2),
-    ('O', 'P', 1): (1.63, 4.5),
-    ('O', 'P', 2): (1.48, 9.0),
-    ('O', 'S', 1): (1.70, 4.0),
-    ('O', 'S', 2): (1.43, 10.0),
-    ('S', 'S', 1): (2.05, 2.8),
-    ('S', 'H', 1): (1.34, 4.0),
-    ('P', 'H', 1): (1.42, 3.5),
-    ('P', 'P', 1): (2.21, 2.0),
-}
+import os
+import pickle
+import re
+import threading
+from pathlib import Path
+from typing import Dict, Tuple, Optional
 
-# ─── Angle Bending ─────────────────────────────────────────────
-# Key: (sym_i, sym_center, sym_k, hybridization) -> (theta0_deg, ka)
-MMFF94_ANGLE = {
-    ('C', 'C', 'C', 'sp3'): (109.5, 0.7),
-    ('C', 'C', 'H', 'sp3'): (109.5, 0.5),
-    ('H', 'C', 'H', 'sp3'): (109.5, 0.4),
-    ('C', 'C', 'O', 'sp3'): (109.5, 0.8),
-    ('C', 'C', 'N', 'sp3'): (109.5, 0.8),
-    ('O', 'C', 'H', 'sp3'): (109.5, 0.6),
-    ('N', 'C', 'H', 'sp3'): (109.5, 0.6),
-    ('O', 'C', 'O', 'sp3'): (109.5, 0.9),
-    ('N', 'C', 'N', 'sp3'): (109.5, 0.8),
-    ('C', 'C', 'S', 'sp3'): (109.5, 0.6),
-    ('C', 'C', 'F', 'sp3'): (109.5, 0.7),
-    ('C', 'C', 'Cl', 'sp3'): (109.5, 0.6),
-    ('F', 'C', 'H', 'sp3'): (109.5, 0.6),
-    ('Cl', 'C', 'H', 'sp3'): (109.5, 0.5),
-    ('S', 'C', 'H', 'sp3'): (109.5, 0.5),
-    ('C', 'C', 'C', 'sp2'): (120.0, 0.9),
-    ('C', 'C', 'H', 'sp2'): (120.0, 0.5),
-    ('C', 'C', 'O', 'sp2'): (120.0, 1.0),
-    ('C', 'C', 'N', 'sp2'): (120.0, 0.9),
-    ('O', 'C', 'O', 'sp2'): (126.0, 1.2),
-    ('O', 'C', 'H', 'sp2'): (120.0, 0.6),
-    ('N', 'C', 'H', 'sp2'): (120.0, 0.6),
-    ('N', 'C', 'O', 'sp2'): (120.0, 1.0),
-    ('H', 'C', 'H', 'sp2'): (120.0, 0.4),
-    ('C', 'C', 'C', 'sp'): (180.0, 1.2),
-    ('C', 'C', 'H', 'sp'): (180.0, 0.6),
-    ('C', 'C', 'N', 'sp'): (180.0, 1.0),
-    ('C', 'N', 'C', 'sp3'): (109.5, 0.7),
-    ('C', 'N', 'H', 'sp3'): (109.5, 0.6),
-    ('H', 'N', 'H', 'sp3'): (106.0, 0.5),
-    ('C', 'N', 'C', 'sp2'): (120.0, 0.9),
-    ('C', 'N', 'H', 'sp2'): (120.0, 0.6),
-    ('O', 'N', 'O', 'sp2'): (125.0, 1.1),
-    ('C', 'O', 'H', 'sp3'): (104.5, 0.8),
-    ('C', 'O', 'C', 'sp3'): (112.0, 0.8),
-    ('H', 'O', 'H', 'sp3'): (104.5, 0.7),
-    ('C', 'O', 'P', 'sp3'): (120.0, 0.7),
-    ('C', 'S', 'C', 'sp3'): (99.0, 0.6),
-    ('C', 'S', 'H', 'sp3'): (96.0, 0.5),
-    ('H', 'S', 'H', 'sp3'): (92.0, 0.4),
-    ('O', 'P', 'O', 'sp3'): (109.5, 0.8),
-    ('C', 'P', 'C', 'sp3'): (109.5, 0.6),
-}
+_DATA_DIR = Path(__file__).parent / "data"
+_PARAM_FILE = _DATA_DIR / "mmff94.par.txt"
+_ATOM_TYPES_FILE = _DATA_DIR / "mmff94_atom_types.txt"
+_CACHE_DIR = _DATA_DIR / "_cache"
+_CACHE_FILE = _CACHE_DIR / "mmff94_params.pkl"
 
-# ─── Torsion/Dihedral ─────────────────────────────────────────
-# Key: (sym_i, type_j, type_k, sym_l) -> (V1, V2, V3)
-MMFF94_TORSION = {
-    ('*', 'C_sp3', 'C_sp3', '*'): (0.0, 0.0, 0.3),
-    ('H', 'C_sp3', 'C_sp3', 'H'): (0.0, 0.0, 0.24),
-    ('C', 'C_sp3', 'C_sp3', 'C'): (0.2, 0.3, 0.4),
-    ('C', 'C_sp3', 'C_sp3', 'H'): (0.0, 0.0, 0.3),
-    ('O', 'C_sp3', 'C_sp3', 'O'): (0.0, 1.0, 0.0),
-    ('O', 'C_sp3', 'C_sp3', 'H'): (0.0, 0.0, 0.4),
-    ('N', 'C_sp3', 'C_sp3', 'H'): (0.0, 0.0, 0.35),
-    ('N', 'C_sp3', 'C_sp3', 'N'): (0.0, 0.8, 0.0),
-    ('*', 'C_sp3', 'C_sp2', '*'): (0.0, 0.0, 0.0),
-    ('H', 'C_sp3', 'C_sp2', '*'): (0.0, 0.0, 0.1),
-    ('*', 'C_sp2', 'C_sp2', '*'): (0.0, 10.0, 0.0),
-    ('*', 'C_sp2', 'N_sp2', '*'): (0.0, 8.0, 0.0),
-    ('*', 'N_sp2', 'C_sp2', '*'): (0.0, 8.0, 0.0),
-    ('C', 'C_sp3', 'O_sp3', 'H'): (0.0, 0.0, 0.5),
-    ('C', 'C_sp3', 'O_sp3', 'C'): (0.0, 0.0, 0.6),
-    ('H', 'C_sp3', 'O_sp3', 'H'): (0.0, 0.0, 0.4),
-    ('H', 'C_sp3', 'O_sp3', 'C'): (0.0, 0.0, 0.4),
-    ('C', 'C_sp3', 'N_sp3', 'H'): (0.0, 0.0, 0.3),
-    ('H', 'C_sp3', 'N_sp3', 'H'): (0.0, 0.0, 0.25),
-    ('C', 'C_sp3', 'N_sp3', 'C'): (0.0, 0.0, 0.5),
-    ('*', 'C_sp3', 'S_sp3', '*'): (0.0, 0.0, 0.3),
-    ('H', 'C_sp3', 'S_sp3', 'H'): (0.0, 0.0, 0.25),
-}
+_load_lock = threading.Lock()
+_PARAMS: Optional[Dict[str, dict]] = None
 
-# ─── Van der Waals ─────────────────────────────────────────────
-MMFF94_VDW = {
-    'H': (1.20, 0.020), 'C': (1.70, 0.107), 'N': (1.55, 0.069),
-    'O': (1.52, 0.060), 'F': (1.47, 0.050), 'S': (1.80, 0.250),
-    'P': (1.80, 0.200), 'Cl': (1.75, 0.227), 'Br': (1.85, 0.320),
-    'I': (1.98, 0.400), 'Si': (2.10, 0.310), 'B': (1.65, 0.085),
-    'Se': (1.90, 0.291),
-}
+# Sentinel for the lazy-loaded atom-type properties dict.
+_ATOM_PROPS: Optional[Dict[int, dict]] = None
+_atom_props_lock = threading.Lock()
 
-# ─── Bond Charge Increments ───────────────────────────────────
-MMFF94_BCI = {
-    ('C', 'C'): 0.0, ('C', 'H'): -0.06, ('H', 'C'): 0.06,
-    ('C', 'O'): 0.15, ('O', 'C'): -0.15, ('C', 'N'): 0.10,
-    ('N', 'C'): -0.10, ('C', 'S'): 0.05, ('S', 'C'): -0.05,
-    ('C', 'F'): 0.20, ('F', 'C'): -0.20, ('C', 'Cl'): 0.15,
-    ('Cl', 'C'): -0.15, ('C', 'Br'): 0.12, ('Br', 'C'): -0.12,
-    ('C', 'I'): 0.10, ('I', 'C'): -0.10, ('O', 'H'): -0.25,
-    ('H', 'O'): 0.25, ('N', 'H'): -0.20, ('H', 'N'): 0.20,
-    ('S', 'H'): -0.10, ('H', 'S'): 0.10, ('N', 'O'): 0.12,
-    ('O', 'N'): -0.12, ('N', 'N'): 0.0, ('O', 'O'): 0.0,
-    ('S', 'S'): 0.0, ('H', 'H'): 0.0,
-}
 
-# ─── Lookup Functions ──────────────────────────────────────────
+# Section header pattern. Matches lines like:
+#   "8.  MMFFANG.PAR: This file supplies parameters for angle-bending..."
+#   "6.  MMFFBOND.PAR: ..."
+_SECTION_HEADER = re.compile(
+    r"^\s*\d+\.\s+(MMFF[A-Z]+)\.PAR\b", re.IGNORECASE
+)
 
-def get_bond_params(sym1, sym2, order):
-    key = (sym1, sym2, order)
-    if key in MMFF94_BOND: return MMFF94_BOND[key]
-    rev_key = (sym2, sym1, order)
-    if rev_key in MMFF94_BOND: return MMFF94_BOND[rev_key]
-    return (1.50, 4.0)
+# Whitelist of sections we care about. Jmol's mmff94.par.txt also contains
+# MMFFBNDK (empirical-rule bond-length defaults) which we ignore in Phase 1.
+_EXPECTED_SECTIONS = frozenset({
+    "MMFFPBCI", "MMFFCHG", "MMFFANG", "MMFFBOND",
+    "MMFFOOP", "MMFFSTBN", "MMFFDFSB", "MMFFTOR", "MMFFVDW",
+})
 
-def get_angle_params(sym_i, sym_center, sym_k, hyb):
-    key = (sym_i, sym_center, sym_k, hyb)
-    if key in MMFF94_ANGLE: return MMFF94_ANGLE[key]
-    rev_key = (sym_k, sym_center, sym_i, hyb)
-    if rev_key in MMFF94_ANGLE: return MMFF94_ANGLE[rev_key]
-    defaults = {'sp3': (109.5, 0.5), 'sp2': (120.0, 0.7), 'sp': (180.0, 1.0)}
-    return defaults.get(hyb, (109.5, 0.5))
 
-def get_torsion_params(sym_i, type_j, type_k, sym_l):
-    for key in [
-        (sym_i, type_j, type_k, sym_l),
-        (sym_l, type_k, type_j, sym_i),
-        ('*', type_j, type_k, '*'),
-        ('*', type_k, type_j, '*'),
-    ]:
-        if key in MMFF94_TORSION: return MMFF94_TORSION[key]
-    if 'sp2' in type_j or 'sp2' in type_k: return (0.0, 1.0, 0.0)
-    return (0.0, 0.0, 0.2)
+def _read_sections() -> Dict[str, list]:
+    """Read the Jmol parameter file and split into named sections.
 
-def get_vdw_params(symbol):
-    return MMFF94_VDW.get(symbol, (1.70, 0.10))
+    Returns a dict {section_name: [data_lines]} where section_name is the
+    bare section identifier (e.g., 'MMFFBOND') and data_lines is the list
+    of non-comment, non-blank lines within that section.
 
-def get_bci_charge(sym1, sym2):
-    pair = (sym1, sym2)
-    if pair in MMFF94_BCI: return MMFF94_BCI[pair]
-    rev_pair = (sym2, sym1)
-    if rev_pair in MMFF94_BCI: return -MMFF94_BCI[rev_pair]
-    return 0.0
+    Only sections listed in `_EXPECTED_SECTIONS` are retained; auxiliary
+    sections such as MMFFBNDK (empirical-rule defaults) are skipped.
+    """
+    sections: Dict[str, list] = {name: [] for name in _EXPECTED_SECTIONS}
+    current: Optional[str] = None
+    with _PARAM_FILE.open("r", encoding="ascii", errors="replace") as f:
+        for raw in f:
+            m = _SECTION_HEADER.match(raw)
+            if m:
+                name = m.group(1).upper()
+                current = name if name in _EXPECTED_SECTIONS else None
+                continue
+            if current is None:
+                continue
+            stripped = raw.strip()
+            if not stripped or stripped.startswith(("*", "#")):
+                continue
+            sections[current].append(stripped)
+    return sections
+
+
+# ---------------------------------------------------------------------------
+# Bond stretching: MMFFBOND
+# ---------------------------------------------------------------------------
+
+def _parse_bond_table(lines: list) -> Dict[Tuple[int, int, int], Tuple[float, float]]:
+    """Parse the MMFFBOND section.
+
+    Each data line: bond_type i j kb r0
+    bond_type maps to bond_order roughly as:
+      0 -> 1 (normal single), 1 -> 1 (aromatic-ish single), etc.
+    We key the dict by (min(i,j), max(i,j), bond_type) so callers
+    look up by the same bond_type the table uses (i.e., we keep
+    Jmol's bond_type semantics).
+    """
+    table: Dict[Tuple[int, int, int], Tuple[float, float]] = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 5:
+            continue
+        try:
+            bt = int(parts[0])
+            i = int(parts[1])
+            j = int(parts[2])
+            kb = float(parts[3])
+            r0 = float(parts[4])
+        except ValueError:
+            continue
+        key = (min(i, j), max(i, j), bt)
+        table[key] = (kb, r0)
+    return table
+
+
+def get_bond_params(type_i: int, type_j: int, bond_type: int = 0) -> Optional[Tuple[float, float]]:
+    """Look up MMFF94 bond stretching parameters.
+
+    Args:
+        type_i, type_j: MMFF94 atom type numbers (1-99).
+        bond_type: MMFF94 bond-type code (0=normal single, see Halgren 1996).
+
+    Returns:
+        (kb, r0) tuple or None if no entry.
+    """
+    table = _load()["bond"]
+    key = (min(type_i, type_j), max(type_i, type_j), bond_type)
+    return table.get(key)
+
+
+# ---------------------------------------------------------------------------
+# Angle bending: MMFFANG
+# ---------------------------------------------------------------------------
+
+def _parse_angle_table(lines: list) -> Dict[Tuple[int, int, int, int], Tuple[float, float]]:
+    """Parse MMFFANG section. Format: angle_type i j k ka theta0.
+
+    Keyed by (i_outer_min, j_center, k_outer_max, angle_type).
+    """
+    table: Dict[Tuple[int, int, int, int], Tuple[float, float]] = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        try:
+            at = int(parts[0])
+            i = int(parts[1])
+            j = int(parts[2])
+            k = int(parts[3])
+            ka = float(parts[4])
+            t0 = float(parts[5])
+        except ValueError:
+            continue
+        i_min, k_max = (i, k) if i <= k else (k, i)
+        table[(i_min, j, k_max, at)] = (ka, t0)
+    return table
+
+
+def get_angle_params(type_i: int, type_j: int, type_k: int,
+                     angle_type: int = 0) -> Optional[Tuple[float, float]]:
+    """Look up MMFF94 angle bending parameters.
+
+    Args:
+        type_i, type_j (center), type_k: MMFF94 atom type numbers.
+        angle_type: MMFF94 angle-type code (0=normal).
+
+    Returns: (ka, theta0_deg) or None.
+    """
+    table = _load()["angle"]
+    i_min, k_max = (type_i, type_k) if type_i <= type_k else (type_k, type_i)
+    return table.get((i_min, type_j, k_max, angle_type))
+
+
+# ---------------------------------------------------------------------------
+# Stretch-bend: MMFFSTBN
+# ---------------------------------------------------------------------------
+
+def _parse_sb_table(lines: list) -> Dict[Tuple[int, int, int, int], Tuple[float, float]]:
+    """Parse MMFFSTBN. Format: sb_type i j k kbai kbak.
+
+    NOTE: SB is NOT symmetric in i<->k because kbai applies to the i-j bond
+    and kbak applies to the j-k bond. We key by (i, j, k, sb_type) literal.
+    """
+    table = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        try:
+            sb = int(parts[0])
+            i = int(parts[1]); j = int(parts[2]); k = int(parts[3])
+            kbai = float(parts[4]); kbak = float(parts[5])
+        except ValueError:
+            continue
+        table[(i, j, k, sb)] = (kbai, kbak)
+    return table
+
+
+def get_sb_params(type_i: int, type_j: int, type_k: int,
+                  sb_type: int = 0) -> Optional[Tuple[float, float]]:
+    """Look up MMFF94 stretch-bend parameters.
+
+    Returns: (kbai, kbak) where kbai is for bond i-j and kbak is for j-k.
+    Not symmetric in i<->k.
+    """
+    table = _load()["sb"]
+    direct = table.get((type_i, type_j, type_k, sb_type))
+    if direct is not None:
+        return direct
+    # Try swapped order with kbai<->kbak
+    swapped = table.get((type_k, type_j, type_i, sb_type))
+    if swapped is not None:
+        return (swapped[1], swapped[0])
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Torsion: MMFFTOR
+# ---------------------------------------------------------------------------
+
+def _parse_torsion_table(lines: list) -> Dict[Tuple[int, int, int, int, int], Tuple[float, float, float]]:
+    """Parse MMFFTOR. Format: tor_type i j k l V1 V2 V3."""
+    table = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 8:
+            continue
+        try:
+            tt = int(parts[0])
+            i = int(parts[1]); j = int(parts[2]); k = int(parts[3]); l = int(parts[4])
+            v1 = float(parts[5]); v2 = float(parts[6]); v3 = float(parts[7])
+        except ValueError:
+            continue
+        # Canonical order: keep central bond j-k; sort by (i,l) tuple-wise
+        if (j, k) > (k, j):
+            j, k = k, j
+            i, l = l, i
+        table[(i, j, k, l, tt)] = (v1, v2, v3)
+    return table
+
+
+def get_torsion_params(type_i: int, type_j: int, type_k: int, type_l: int,
+                       tor_type: int = 0) -> Optional[Tuple[float, float, float]]:
+    """Look up MMFF94 torsion parameters. Returns (V1, V2, V3) or None."""
+    table = _load()["torsion"]
+    # Canonicalize the same way as the parser
+    if (type_j, type_k) > (type_k, type_j):
+        type_j, type_k = type_k, type_j
+        type_i, type_l = type_l, type_i
+    return table.get((type_i, type_j, type_k, type_l, tor_type))
+
+
+# ---------------------------------------------------------------------------
+# Out-of-plane: MMFFOOP
+# ---------------------------------------------------------------------------
+
+def _parse_oop_table(lines: list) -> Dict[Tuple[int, int, int, int], float]:
+    """Parse MMFFOOP. Format: i j(center) k l koop.
+
+    Keyed by (i_min, j_center, k_mid, l_max) -- canonicalize the outers.
+    """
+    table = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 5:
+            continue
+        try:
+            i = int(parts[0]); j = int(parts[1]); k = int(parts[2]); l = int(parts[3])
+            koop = float(parts[4])
+        except ValueError:
+            continue
+        outers = tuple(sorted([i, k, l]))
+        table[(outers[0], j, outers[1], outers[2])] = koop
+    return table
+
+
+def get_oop_params(type_i: int, type_j: int, type_k: int, type_l: int) -> Optional[float]:
+    """Look up MMFF94 out-of-plane force constant koop. j is the center."""
+    table = _load()["oop"]
+    outers = tuple(sorted([type_i, type_k, type_l]))
+    return table.get((outers[0], type_j, outers[1], outers[2]))
+
+
+# ---------------------------------------------------------------------------
+# Van der Waals: MMFFVDW
+# ---------------------------------------------------------------------------
+
+def _parse_vdw_table(lines: list) -> Dict[int, Tuple[float, float, float, float, int]]:
+    """Parse MMFFVDW. Format: type alpha N A G DA_symbol.
+
+    DA_symbol is encoded as int(ord('-')|'D'|'A'). The downstream
+    VdwCalc uses int comparison (matches Jmol's `CalculationsMMFF.DA_D`
+    and `DA_DA` integer constants).
+    """
+    table = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        try:
+            t = int(parts[0])
+            alpha = float(parts[1]); N = float(parts[2])
+            A = float(parts[3]); G = float(parts[4])
+            da_char = parts[5][0]
+            da = ord(da_char) if da_char in ("D", "A") else ord("-")
+        except (ValueError, IndexError):
+            continue
+        table[t] = (alpha, N, A, G, da)
+    return table
+
+
+def get_vdw_params(type_i: int) -> Optional[Tuple[float, float, float, float, int]]:
+    """Look up MMFF94 VdW parameters. Returns (alpha, N, A, G, da_int) or None."""
+    return _load()["vdw"].get(type_i)
+
+
+# ---------------------------------------------------------------------------
+# Bond-charge increment: MMFFCHG
+# ---------------------------------------------------------------------------
+
+def _parse_bci_table(lines: list) -> Dict[Tuple[int, int, int], float]:
+    """Parse MMFFCHG. Format: bond_type i j bci. Stored asymmetric (i,j,bt)."""
+    table = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 4:
+            continue
+        try:
+            bt = int(parts[0]); i = int(parts[1]); j = int(parts[2])
+            bci = float(parts[3])
+        except ValueError:
+            continue
+        table[(i, j, bt)] = bci
+    return table
+
+
+def get_bci(type_i: int, type_j: int, bond_type: int = 0) -> Optional[float]:
+    """Look up the MMFF94 BCI for type_i in an i-j bond.
+
+    By convention bci(i,j) = -bci(j,i). The parsed table stores both
+    directions if Jmol's file does; we try direct then negated swap.
+    """
+    table = _load()["bci"]
+    direct = table.get((type_i, type_j, bond_type))
+    if direct is not None:
+        return direct
+    swapped = table.get((type_j, type_i, bond_type))
+    if swapped is not None:
+        return -swapped
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Partial BCI: MMFFPBCI (fallback for missing MMFFCHG entries)
+# ---------------------------------------------------------------------------
+
+def _parse_pbci_table(lines: list) -> Dict[int, Tuple[float, float]]:
+    """Parse MMFFPBCI. Format: '0 type pbci fcadj'.
+
+    pbci is used as a fallback when MMFFCHG has no entry for an (i,j) pair:
+    bci(i,j) ~ pbci(j) - pbci(i)
+    fcadj is the formal-charge adjustment factor (used for charged systems).
+    """
+    table = {}
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 4:
+            continue
+        try:
+            t = int(parts[1]); pbci = float(parts[2]); fcadj = float(parts[3])
+        except (ValueError, IndexError):
+            continue
+        table[t] = (pbci, fcadj)
+    return table
+
+
+def get_pbci(type_i: int) -> Optional[Tuple[float, float]]:
+    """Look up MMFF94 partial BCI and formal-charge adjustment for an atom type.
+
+    Returns (pbci, fcadj) or None.
+    """
+    return _load()["pbci"].get(type_i)
+
+
+# ---------------------------------------------------------------------------
+# Lazy loader with pickle cache
+# ---------------------------------------------------------------------------
+
+def _load() -> Dict[str, dict]:
+    """Lazy load + cache the parsed parameter dicts.
+
+    Cache behavior:
+        - If cache file exists and is newer than the .txt source: deserialize.
+        - Else: parse the .txt, write fresh cache, return.
+
+    Thread-safe via _load_lock.
+    """
+    global _PARAMS
+    if _PARAMS is not None:
+        return _PARAMS
+    with _load_lock:
+        if _PARAMS is not None:
+            return _PARAMS
+
+        # Try to use the pickle cache
+        if (_CACHE_FILE.exists()
+                and _CACHE_FILE.stat().st_mtime >= _PARAM_FILE.stat().st_mtime):
+            try:
+                with _CACHE_FILE.open("rb") as f:
+                    _PARAMS = pickle.load(f)
+                return _PARAMS
+            except (pickle.PickleError, EOFError, OSError):
+                # Corrupted cache -- fall through to fresh parse
+                pass
+
+        # Fresh parse
+        sections = _read_sections()
+        _PARAMS = {
+            "bond":    _parse_bond_table(sections.get("MMFFBOND", [])),
+            "angle":   _parse_angle_table(sections.get("MMFFANG", [])),
+            "sb":      _parse_sb_table(sections.get("MMFFSTBN", [])),
+            "torsion": _parse_torsion_table(sections.get("MMFFTOR", [])),
+            "oop":     _parse_oop_table(sections.get("MMFFOOP", [])),
+            "vdw":     _parse_vdw_table(sections.get("MMFFVDW", [])),
+            "bci":     _parse_bci_table(sections.get("MMFFCHG", [])),
+            "pbci":    _parse_pbci_table(sections.get("MMFFPBCI", [])),
+        }
+
+        # Write fresh cache (best-effort; ignore write failures)
+        try:
+            _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            with _CACHE_FILE.open("wb") as f:
+                pickle.dump(_PARAMS, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except OSError:
+            pass
+
+        return _PARAMS
+
+
+# ---------------------------------------------------------------------------
+# Atom-type properties: parsed from mmff94_atom_types.txt (separate file)
+# ---------------------------------------------------------------------------
+
+def _parse_atom_props_file() -> Dict[int, dict]:
+    """Parse mmff94_atom_types.txt. Each non-comment line:
+        AtSym  ElemNo  mmType  HType  formalCharge*12  valence  Desc  Smiles
+
+    The MMFF94 'equivalence class' is the HType column in Jmol's file.
+    When HType == 0 (no hydrogen-equivalence aggregation), we fall back to
+    the type number itself.
+    """
+    table: Dict[int, dict] = {}
+    with _ATOM_TYPES_FILE.open("r", encoding="ascii", errors="replace") as f:
+        for raw in f:
+            stripped = raw.strip()
+            if not stripped or stripped.startswith(("#", "*")):
+                continue
+            parts = stripped.split(None, 7)  # split on whitespace, max 8 cols
+            if len(parts) < 6:
+                continue
+            try:
+                element_no = int(parts[1])
+                mm_type = int(parts[2])
+                h_type = int(parts[3])
+                fc12 = int(parts[4])
+                valence = int(parts[5])
+            except ValueError:
+                continue
+            # Don't overwrite first occurrence (multiple SMARTS rows can share
+            # the same mm_type -- the first entry wins per Jmol convention).
+            if mm_type in table:
+                continue
+            table[mm_type] = {
+                "symbol": parts[0],
+                "element_no": element_no,
+                "equiv_class": h_type if h_type != 0 else mm_type,
+                "formal_charge_x12": fc12,
+                "valence": valence,
+                "description": parts[6] if len(parts) > 6 else "",
+            }
+    return table
+
+
+def get_atom_props(mmff_type: int) -> Optional[dict]:
+    """Look up element/class/formal-charge/valence for an MMFF94 atom type.
+
+    Returns a dict with keys: symbol, element_no, equiv_class,
+    formal_charge_x12, valence, description.  None if type unknown.
+    """
+    global _ATOM_PROPS
+    if _ATOM_PROPS is None:
+        with _atom_props_lock:
+            if _ATOM_PROPS is None:
+                _ATOM_PROPS = _parse_atom_props_file()
+    return _ATOM_PROPS.get(mmff_type)

@@ -45,6 +45,7 @@ def build(onefile: bool = True) -> None:
         "--include-package=src",
         "--include-package=pychem",
         "--include-data-files=plugins/*.py=plugins/",
+        "--include-data-dir=plugins=plugins",
         "--include-data-dir=assets=assets",
         "--include-qt-plugins=sensible,iconengines,imageformats",
         "--include-module=PySide6.QtSvg",

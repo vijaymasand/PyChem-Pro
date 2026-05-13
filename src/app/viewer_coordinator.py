@@ -28,6 +28,24 @@ def toggle_labels(window):
     window.viewer_3d.update()
 
 
+def clear_labels(window):
+    """Clear all custom labels and uncheck the show labels box."""
+    window.viewer_3d.clear_labels()
+    window.input_panel.show_labels_check.setChecked(False)
+    window.status_bar.showMessage("Labels cleared")
+
+
+def change_label_color(window):
+    """Open color picker to change label color."""
+    from PySide6.QtWidgets import QColorDialog
+    current = window.viewer_3d.label_color
+    color = QColorDialog.getColor(current, window, "Choose Label Color")
+    if color.isValid():
+        window.viewer_3d.label_color = color
+        window.viewer_3d.update()
+        window.status_bar.showMessage(f"Label color changed to {color.name()}")
+
+
 def toggle_sidechains(window):
     window.viewer_3d.show_sidechains = window.input_panel.show_sidechains_check.isChecked()
     window.viewer_3d.update()

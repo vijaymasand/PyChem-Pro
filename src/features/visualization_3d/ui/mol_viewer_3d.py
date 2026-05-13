@@ -117,6 +117,7 @@ class MolViewer3D(QWidget):
         self.show_sidechains = False
         self.render_mode = 'ball_and_stick'  # 'spacefill', 'wireframe', 'cartoon', 'ribbon', 'backbone'
         self.custom_atom_modes = {}
+        self.custom_atom_colors = {}  # atom_idx -> (r, g, b) tuple
         self.sidechain_res_vis = {}
         self.labeled_residues = {}  # mapping res_seq to QColor
         self.use_ssao = False  # Fake real-time ray-tracing toggle
@@ -128,6 +129,7 @@ class MolViewer3D(QWidget):
         self.stick_scale = 1.0    # Multiplier for bond stick width
         self.line_scale = 1.0     # Multiplier for wireframe line width
         self.label_font_size = 9  # Fixed label font size in points
+        self.label_color = QColor(255, 255, 255, 230)  # Default white labels
 
         # Light direction (normalized) — top-left-front
         self._light_dir = np.array([-0.4, -0.5, 1.0])
@@ -146,6 +148,8 @@ class MolViewer3D(QWidget):
 
     def set_molecule(self, molecule):
         self.molecule = molecule
+        self.custom_atom_colors = {}
+        self.labels = {}  # Clear custom labels when loading new molecule
         if molecule and len(molecule.atoms) > 0:
             self._auto_fit()
             # Auto-switch to cartoon for proteins, reset for small molecules
@@ -158,6 +162,13 @@ class MolViewer3D(QWidget):
 
     def clear(self):
         self.molecule = None
+        self.labels = {}
+        self.update()
+
+    def clear_labels(self):
+        """Universal function to clear all custom atom labels."""
+        self.labels = {}
+        self.show_labels = False
         self.update()
 
     def toggle_auto_rotate(self):
@@ -206,6 +217,21 @@ class MolViewer3D(QWidget):
     def set_selected(self, atom_indices):
         """Set which atoms are highlighted (from console select commands)."""
         self.selected_atoms = set(atom_indices)
+        self.update()
+
+    def set_atom_colors(self, colors_dict):
+        """Set custom colors for specific atoms.
+        
+        Args:
+            colors_dict: Dictionary mapping atom index to (r, g, b) tuple or None to reset.
+        """
+        if colors_dict is None:
+            self.custom_atom_colors = {}
+        else:
+            self.custom_atom_colors.update(colors_dict)
+        
+        if hasattr(self, '_renderer'):
+            self._renderer.invalidate_cache()
         self.update()
 
     def _draw_bonds(self, painter, projected, custom_only=False):

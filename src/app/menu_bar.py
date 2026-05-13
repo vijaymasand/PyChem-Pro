@@ -139,6 +139,25 @@ def _build_tools_menu(window, menu_bar):
     sketcher_action = QAction("2D-&Sketcher", window)
     sketcher_action.triggered.connect(window._open_sketcher)
     tools_menu.addAction(sketcher_action)
+    
+    tools_menu.addSeparator()
+    
+    # --- Lipophilicity Menu ---
+    lipo_menu = tools_menu.addMenu("&Lipophilicity")
+    
+    logp_action = QAction("LogP", window)
+    logp_action.triggered.connect(window._calculate_logp_action)
+    lipo_menu.addAction(logp_action)
+    
+    lipo_contrib_action = QAction("Lipophilic Contribution", window)
+    lipo_contrib_action.triggered.connect(window._show_lipophilic_contributions)
+    lipo_menu.addAction(lipo_contrib_action)
+    
+    lipo_color_action = QAction("Color 3D-view (Gradient)", window)
+    lipo_color_action.triggered.connect(window._color_by_lipophilicity)
+    lipo_menu.addAction(lipo_color_action)
+    
+    window._lipo_menu_actions = [logp_action, lipo_contrib_action, lipo_color_action]
 
 
 # ── Plugins ───────────────────────────────────────────────────────
@@ -341,7 +360,7 @@ def _build_applications_menu(window, menu_bar):
 
     applications_menu.addSeparator()
 
-    tools_submenu = applications_menu.addMenu("&Tools")
+    tools_submenu = applications_menu.addMenu("&Sphere Tools")
 
     window.com_sphere_action = QAction("COM Sphere", window)
     window.com_sphere_action.triggered.connect(window._add_com_sphere)
@@ -369,7 +388,8 @@ def _build_applications_menu(window, menu_bar):
     # Disable molecule-dependent actions initially
     for action in (window.opt_menu_actions + window.chg_menu_actions +
                    [window.color_action, window.protein_color_action,
-                    window.aromaticity_action, window.docking_pose_action] + window.tools_submenu_actions):
+                    window.aromaticity_action, window.docking_pose_action] + 
+                    window.tools_submenu_actions + window._lipo_menu_actions):
         action.setEnabled(False)
 
 

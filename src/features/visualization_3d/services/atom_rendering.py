@@ -89,7 +89,7 @@ def draw_selection_ring(painter: QPainter, sx: float, sy: float, radius: float):
     painter.drawEllipse(QRectF(sx - ring_r, sy - ring_r, ring_r * 2, ring_r * 2))
 
 
-def draw_label(painter: QPainter, label: str, sx: float, sy: float, radius: float, base_font_size: int, export_scale: float = 1.0):
+def draw_label(painter: QPainter, label: str, sx: float, sy: float, radius: float, base_font_size: int, export_scale: float = 1.0, color: QColor = None):
     font_size = base_font_size
     if export_scale > 1.0:
         scale_factor = min(export_scale * 0.3, 0.8)
@@ -102,9 +102,11 @@ def draw_label(painter: QPainter, label: str, sx: float, sy: float, radius: floa
     offset_x = int(radius * 0.5 + 2)
     offset_y = int(-radius * 0.3)
 
+    label_color = color if color else QColor(255, 255, 255, 230)
+
     painter.setPen(QColor(0, 0, 0, 180))
     painter.drawText(int(sx + offset_x + 1), int(sy + offset_y + 1), label)
-    painter.setPen(QColor(255, 255, 255, 230))
+    painter.setPen(label_color)
     painter.drawText(int(sx + offset_x), int(sy + offset_y), label)
 
 def draw_residue_label(painter: QPainter, text: str, sx: float, sy: float, color: QColor, radius: float, base_font_size: int, export_scale: float = 1.0, settings: dict = None):

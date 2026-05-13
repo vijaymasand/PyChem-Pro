@@ -4,7 +4,7 @@ Chemistry Actions — Optimize, charges, descriptors, SMILES generation UI actio
 All functions receive the MainWindow instance as ``window``.
 """
 
-from src.shared.qt_compat import QApplication, QMessageBox
+from src.shared.qt_compat import QApplication, QMessageBox, QColorDialog, Qt
 from src.core.domain.models.bond import BondType
 
 _DEBUG = False
@@ -621,3 +621,92 @@ def _generate_simple_formula(window):
         formula_parts.append(f"{symbol}{count if count > 1 else ''}")
 
     return "".join(formula_parts)
+
+
+# ── Lipophilicity Actions ─────────────────────────────────────
+
+def calculate_logp_action(window):
+    """Calculate LogP and print to console."""
+    if not window.molecule:
+        return
+    window.status_bar.showMessage("Calculating LogP...")
+    QApplication.processEvents()
+    try:
+        from src.features.cheminformatics.services.lipophilicity_service import LipophilicityService
+        service = LipophilicityService(window.molecule)
+        logp = service.calculate_logp()
+        print(f"\nCalculated LogP for {getattr(window.molecule, 'name', 'Molecule') or 'Molecule'}: {logp:.4f}")
+        window.status_bar.showMessage(f"LogP: {logp:.4f}")
+    except Exception as e:
+        window.status_bar.showMessage(f"LogP calculation error: {e}")
+
+
+def show_lipophilic_contributions(window):
+    """Label atoms with their lipophilic contributions."""
+    if not window.molecule:
+        return
+    window.status_bar.showMessage("Calculating Lipophilic Contributions...")
+    QApplication.processEvents()
+    try:
+        from src.features.cheminformatics.services.lipophilicity_service import LipophilicityService
+        service = LipophilicityService(window.molecule)
+        contribs = service.get_atomic_contributions()
+        
+        labels = {}
+        selected = window.viewer_3d.selected_atoms
+        for i, contrib in enumerate(contribs):
+            if not selected or i in selected:
+                labels[i] = f"{contrib:.2f}"
+            
+        window.viewer_3d.labels = labels
+        window.viewer_3d.show_labels = True
+        
+        # Sync UI checkbox if it exists
+        if hasattr(window, 'input_panel') and hasattr(window.input_panel, 'show_labels_check'):
+            window.input_panel.show_labels_check.setChecked(True)
+            
+        window.viewer_3d.update()
+        window.status_bar.showMessage("Lipophilic contributions labeled on atoms")
+    except Exception as e:
+        window.status_bar.showMessage(f"Lipophilicity error: {e}")
+
+
+def color_by_lipophilicity(window):
+    """Apply a gradient color mapping based on lipophilic contributions."""
+    if not window.molecule:
+        return
+    
+    # Prompt for two colors
+    color_min = QColorDialog.getColor(Qt.GlobalColor.red, window, "Choose Color for Hydrophilic (min)")
+    if not color_min.isValid(): return
+    
+    color_max = QColorDialog.getColor(Qt.GlobalColor.green, window, "Choose Color for Lipophilic (max)")
+    if not color_max.isValid(): return
+    
+    window.status_bar.showMessage("Mapping lipophilicity gradient...")
+    QApplication.processEvents()
+    
+    try:
+        from src.features.cheminformatics.services.lipophilicity_service import LipophilicityService
+        service = LipophilicityService(window.molecule)
+        contribs = service.get_atomic_contributions()
+        
+        if not contribs: return
+        
+        c_min = min(contribs)
+        c_max = max(contribs)
+        c_range = c_max - c_min if c_max != c_min else 1.0
+        
+        custom_colors = {}
+        for i, val in enumerate(contribs):
+            # Linear interpolation between color_min and color_max
+            t = (val - c_min) / c_range
+            r = int(color_min.red() + t * (color_max.red() - color_min.red()))
+            g = int(color_min.green() + t * (color_max.green() - color_min.green()))
+            b = int(color_min.blue() + t * (color_max.blue() - color_min.blue()))
+            custom_colors[i] = (r, g, b)
+            
+        window.viewer_3d.set_atom_colors(custom_colors)
+        window.status_bar.showMessage(f"Gradient mapped (range: {c_min:.2f} to {c_max:.2f})")
+    except Exception as e:
+        window.status_bar.showMessage(f"Gradient mapping error: {e}")

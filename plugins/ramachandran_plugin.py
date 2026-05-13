@@ -942,4 +942,4 @@ class RamachandranPlugin(BasePlugin):
     def cleanup(self):
         if self._widget:
             self._widget = None
-        self.log_info("Ramachandran Plotter cleaned up")
+        self.logger.info("Ramachandran Plotter cleaned up")

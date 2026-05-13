@@ -528,6 +528,21 @@ def get_stylesheet() -> str:
         border-color: {c['accent']};
     }}
 
+    QPushButton#btnTertiary {{
+        background-color: transparent;
+        color: {c['text_secondary']};
+        border: 1px solid {c['border']};
+        padding: 2px 6px;
+        font-size: 10px;
+        font-weight: 400;
+        min-height: 14px;
+    }}
+    QPushButton#btnTertiary:hover {{
+        background-color: {c['bg_hover']};
+        color: {c['accent']};
+        border-color: {c['accent']};
+    }}
+
     QPushButton#btnDanger {{
         background-color: {c['bg_tertiary']};
         color: {c['error']};

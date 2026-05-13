@@ -398,10 +398,59 @@ class Molecule:
 
             if has_triple or (num_doubles >= 2 and num_neighbors == 2):
                 atom.hybridization = 'sp'
-            elif has_double or atom.is_aromatic:
+            elif has_double or getattr(atom, 'is_aromatic', False):
                 atom.hybridization = 'sp2'
             else:
                 atom.hybridization = 'sp3'
+
+    def perceive_aromaticity(self):
+        """
+        Identify aromatic rings and atoms using Hückel's 4n+2 rule.
+        Marks atoms and bonds as aromatic.
+        """
+        rings = self.find_rings()
+        for ring in rings:
+            if len(ring) not in (5, 6):
+                continue
+            
+            # Simple Hückel-like check
+            potential_aromatic = True
+            pi_electrons = 0
+            
+            for atom_idx in ring:
+                atom = self.atoms[atom_idx]
+                neighbors = self.get_neighbor_bonds(atom_idx)
+                num_doubles = sum(1 for _, b in neighbors if b.is_double)
+                
+                if atom.symbol == 'C':
+                    if num_doubles >= 1 or self.is_in_ring(atom_idx):
+                        pi_electrons += 1
+                    else:
+                        potential_aromatic = False
+                elif atom.symbol == 'N':
+                    # Pyrrole-type (2e) or Pyridine-type (1e)
+                    if num_doubles >= 1:
+                        pi_electrons += 1
+                    else:
+                        pi_electrons += 2
+                elif atom.symbol in ('O', 'S'):
+                    pi_electrons += 2
+                else:
+                    potential_aromatic = False
+                
+                if not potential_aromatic:
+                    break
+            
+            if potential_aromatic and (pi_electrons % 4 == 2):
+                # Mark as aromatic
+                for atom_idx in ring:
+                    self.atoms[atom_idx].is_aromatic = True
+                for i in range(len(ring)):
+                    a, b = ring[i], ring[(i+1)%len(ring)]
+                    bond = self.get_bond_between(a, b)
+                    if bond:
+                        from src.core.domain.models.bond import BondType
+                        bond.bond_type = BondType.AROMATIC
 
     # ─── SYBYL Atom Types ──────────────────────────────────────────
 

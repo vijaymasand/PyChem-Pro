@@ -47,7 +47,8 @@ class Atom:
         'ring_bonds', '_in_bracket', 'radical_electrons',
         'hybridization', 'sybyl_type', 'pdb_name', 'res_name',
         'chain_id', 'res_seq', 'b_factor', 'is_hetatm', 'ss_type',
-        'sasa', 'sasa_points'
+        'sasa', 'sasa_points',
+        'mmff_type', 'mmff_class',
     )
 
     def __init__(self, symbol, is_aromatic=False, formal_charge=0,
@@ -100,6 +101,10 @@ class Atom:
         
         self.sasa = 0.0            # Solvent Accessible Surface Area
         self.sasa_points = []      # 3D points representing the accessible surface
+
+        # MMFF94 typing (set by AtomTyper; 0 = unknown)
+        self.mmff_type = 0
+        self.mmff_class = 0
 
     @property
     def symbol(self):

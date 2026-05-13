@@ -251,6 +251,21 @@ class InputPanel(QWidget):
         self.show_labels_check.setChecked(False)
         view_layout.addWidget(self.show_labels_check)
 
+        label_btn_row = QHBoxLayout()
+        label_btn_row.setSpacing(4)
+        label_btn_row.setContentsMargins(20, 0, 0, 0) # Indent under checkbox
+        self.label_color_btn = QPushButton("Color")
+        self.label_color_btn.setObjectName("btnTertiary")
+        self.label_color_btn.setFixedWidth(50)
+        label_btn_row.addWidget(self.label_color_btn)
+        
+        self.clear_labels_btn = QPushButton("Clear")
+        self.clear_labels_btn.setObjectName("btnTertiary")
+        self.clear_labels_btn.setFixedWidth(50)
+        label_btn_row.addWidget(self.clear_labels_btn)
+        label_btn_row.addStretch()
+        view_layout.addLayout(label_btn_row)
+
         self.show_sidechains_check = QCheckBox("Show side chains")
         self.show_sidechains_check.setChecked(False)
         view_layout.addWidget(self.show_sidechains_check)
