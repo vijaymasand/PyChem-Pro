@@ -63,7 +63,7 @@ Infrastructure - EventBus, ParallelExecutor, Security
 
 ```bash
 git clone https://github.com/vijaymasand/PyChem.git
-cd PyChem
+cd PyChem-Pro
 ```
 
 ### Step 2: Create Virtual Environment
@@ -89,7 +89,10 @@ source venv/bin/activate
 ### Step 3: Install Dependencies
 
 ```bash
+
 pip install --upgrade pip
+# (If this fails on Windows, use: python -m pip install --upgrade pip)
+
 pip install -r requirements.txt
 ```
 
@@ -1586,4 +1589,6 @@ If you use PyChem in academic work, please cite:
 
 ---
 
-*This manual covers PyChem version 2.0.0. For the latest updates, visit the GitHub repository.*
+*This manual covers PyChem-Pro version 1.0.0. Many more functions coming in version 2.0.*
+
+*For the latest updates, visit the GitHub repository.*
