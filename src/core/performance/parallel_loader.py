@@ -197,24 +197,25 @@ class ParallelFileLoader:
         # Build molecule
         mol = Molecule(name=filepath.stem)
         serial_to_idx = {}
-        
-        for serial, atom_data in all_atoms:
-            atom = Atom(atom_data['symbol'])
-            atom.x = atom_data['x']
-            atom.y = atom_data['y']
-            atom.z = atom_data['z']
-            atom.pdb_name = atom_data['name']
-            atom.res_name = atom_data['res_name']
-            atom.chain_id = atom_data['chain_id']
-            atom.res_seq = atom_data['res_seq']
-            atom.b_factor = atom_data['b_factor']
-            atom.is_hetatm = atom_data['is_hetatm']
+        mol.begin_bulk_load()
+        for serial, d in all_atoms:
+            a = Atom(d['symbol'])
+            a.x, a.y, a.z = d['x'], d['y'], d['z']
+            a.pdb_name, a.res_name, a.chain_id, a.res_seq = d['name'], d['res_name'], d['chain_id'], d['res_seq']
+            a.b_factor, a.is_hetatm = d['b_factor'], d['is_hetatm']
             
-            idx = mol.add_atom(atom)
+            idx = mol.add_atom(a)
             serial_to_idx[serial] = idx
         
-        # Parse CONECT records (single-threaded, typically small)
+        # Parse CONECT records
         self._parse_conect_records(lines, mol, serial_to_idx)
+        
+        # Auto-bond if needed
+        from src.features.io.loaders.file_reader import _auto_bond_pdb
+        if len(mol.atoms) > 0 and len(mol.bonds) < len(mol.atoms) * 0.8:
+            _auto_bond_pdb(mol)
+            
+        mol.end_bulk_load()
         
         mol.properties['source'] = 'file'
         mol.properties['source_format'] = 'pdb'

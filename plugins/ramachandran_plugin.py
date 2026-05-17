@@ -329,6 +329,22 @@ class RamachandranWidget(PluginWidget):
         
         self.update_plot()
     
+    def cleanup(self):
+        """Explicitly close matplotlib figure to release resources."""
+        try:
+            if hasattr(self, 'figure'):
+                plt.close(self.figure)
+            self.structure_data.clear()
+            if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'logger'):
+                self.plugin.logger.info("RamachandranWidget cleaned up and figure closed.")
+            else:
+                print("RamachandranWidget cleaned up and figure closed.")
+        except Exception as e:
+            if hasattr(self, 'plugin') and self.plugin and hasattr(self.plugin, 'logger'):
+                self.plugin.logger.error(f"Error during RamachandranWidget cleanup: {e}")
+            else:
+                print(f"Error during RamachandranWidget cleanup: {e}")
+
     def _get_stylesheet(self):
         return """
             QWidget { background-color: #ffffff; color: #1e293b; font-family: 'Segoe UI'; font-size: 11px; }
@@ -941,5 +957,9 @@ class RamachandranPlugin(BasePlugin):
     
     def cleanup(self):
         if self._widget:
+            try:
+                self._widget.cleanup()
+            except:
+                pass
             self._widget = None
         self.logger.info("Ramachandran Plotter cleaned up")

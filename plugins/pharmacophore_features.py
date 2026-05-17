@@ -1290,8 +1290,12 @@ class PharmacophoreVisualizerWidget(QWidget):
         self.molecule = molecule
         self._rot_x = 0.0
         self._rot_y = 0.0
+        # Disabled automatic analysis to prevent UI hang on large proteins.
+        # User must click "Run Analysis" or "Load from Viewer" manually.
         if molecule:
-            self._run_analysis()
+            self.lbl_stats.setText(f"Ready to analyze: {len(molecule.atoms)} atoms")
+        else:
+            self.lbl_stats.setText("No molecule loaded")
 
     def _get_radii(self) -> Dict[str, float]:
         return {t: s.value() for t, s in self._radii_spins.items()}

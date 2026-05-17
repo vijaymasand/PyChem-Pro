@@ -194,6 +194,9 @@ def get_element(symbol_or_z):
     elif isinstance(symbol_or_z, str):
         elem = PERIODIC_TABLE.get(symbol_or_z)
         if elem is None:
+            # Fallback for alternative cases, e.g. "CL" -> "Cl" in PDB
+            elem = PERIODIC_TABLE.get(symbol_or_z.capitalize())
+        if elem is None:
             raise ValueError(f"Unknown element symbol: {symbol_or_z}")
         return elem
     else:

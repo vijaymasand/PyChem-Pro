@@ -457,6 +457,12 @@ class SketcherWidget(QWidget):
                 if obj.class_name == "Molecule":
                     target_mol = obj
                     break
+                elif hasattr(obj, 'molecule') and obj.molecule:
+                    target_mol = obj.molecule
+                    break
+                elif hasattr(obj, 'parent') and obj.parent and getattr(obj.parent, 'class_name', None) == "Molecule":
+                    target_mol = obj.parent
+                    break
         
         if not target_mol:
             # Fallback to last molecule if none selected

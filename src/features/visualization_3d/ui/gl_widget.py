@@ -19,12 +19,20 @@ rendering without a crash.
 import math
 import sys
 import traceback
+import ctypes
 
 import numpy as np
 
-from src.shared.qt_compat import Qt, QColor, QPainter, QPen, QBrush, QFont, QPointF, QRectF
-from src.shared.qt_compat import QRadialGradient, QWheelEvent
-from src.shared.ui.theme import COLORS
+from src.shared.qt_compat import (
+    Qt, QColor, QPainter, QPen, QBrush, QFont, QPointF, QRectF,
+    QRadialGradient, QWheelEvent, QVector3D, QMatrix4x4,
+    QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, COLORS
+)
+from src.features.visualization_3d.ui.shaders import (
+    MESH_VERTEX_SHADER, MESH_FRAGMENT_SHADER,
+    SPHERE_VERTEX_SHADER, SPHERE_FRAGMENT_SHADER
+)
+import time
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +170,15 @@ class GLMoleculeWidget(_QOpenGLWidget):
         self._last_mouse_pos = None
         self._mouse_button = None
 
+        # GL resources
+        self._shader_mesh = None
+        self._shader_sphere = None
+        self._vbo_atoms = None
+        self._vbo_mesh = None
+        self._num_mesh_indices = 0
+        self._vao_atoms = None
+        self._vao_mesh = None
+
         # GL version info (populated in initializeGL)
         self._gl_version_string = ''
         self._gl_renderer_string = ''
@@ -195,11 +212,8 @@ class GLMoleculeWidget(_QOpenGLWidget):
     # ------------------------------------------------------------------
 
     def initializeGL(self):
-        """Called once when the GL context is first created.
-
-        If *anything* goes wrong here we set ``gl_available = False`` and
-        fall back to QPainter-based rendering inside ``paintGL``.
-        """
+        """Called once when the GL context is first created."""
+        t_init = time.time()
         try:
             ctx = self.context()
             if ctx is None or not ctx.isValid():
@@ -235,8 +249,12 @@ class GLMoleculeWidget(_QOpenGLWidget):
             gl.glDepthFunc(0x0201)  # GL_LESS
             gl.glEnable(0x0BE2)   # GL_BLEND
             gl.glBlendFunc(0x0302, 0x0303)  # GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA
+            gl.glEnable(0x8861)   # GL_MULTISAMPLE
 
+            self._init_shaders()
             self.gl_available = True
+            print(f"[GL] Context ready — OpenGL {major}.{minor} Renderer: {self._gl_renderer_string}")
+            print(f"[GL] Initialization complete in {time.time()-t_init:.3f}s")
 
         except Exception as exc:
             print(f'[GL] OpenGL initialisation failed: {exc}')
@@ -258,34 +276,51 @@ class GLMoleculeWidget(_QOpenGLWidget):
     # ------------------------------------------------------------------
 
     def paintGL(self):
-        """Main render loop.
-
-        When GL is available we clear with the background colour and draw
-        atoms/bonds using QPainter *on top of* the GL surface.  (This is
-        the pragmatic v1 approach — we let QPainter draw through the
-        QOpenGLWidget paint device, which is already GPU-accelerated, and
-        avoid the complexity of custom shaders/VBOs in the first release.)
-
-        When GL is not available we fall back to pure QPainter software
-        rendering (same visual quality as MolViewer3D).
-        """
-        if self.gl_available:
+        """Main render loop using VBOs and Shaders."""
+        t_frame = time.time()
+        if not self.gl_available:
+            # Fallback to software (very slow for proteins)
+            painter = QPainter(self)
             try:
-                gl = self.context().functions()
-                bg = self.bg_color
-                gl.glClearColor(bg.redF(), bg.greenF(), bg.blueF(), 1.0)
-                gl.glClear(0x00004100)  # GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT
-            except Exception:
-                pass
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                self._render_with_painter(painter, self.width(), self.height())
+            finally:
+                painter.end()
+            return
 
-        # Use QPainter on the GL surface — this is hardware-accelerated on
-        # QOpenGLWidget and gives us the best portability for v1.
-        painter = QPainter(self)
         try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            self._render_with_painter(painter, self.width(), self.height())
-        finally:
-            painter.end()
+            gl = self.context().functions()
+            bg = self.bg_color
+            gl.glClearColor(bg.redF(), bg.greenF(), bg.blueF(), 1.0)
+            gl.glClear(0x00004100)  # COLOR | DEPTH
+            
+            if self.molecule is None:
+                return
+
+            # Set camera matrices
+            proj = self._get_projection_matrix()
+            view = self._get_view_matrix()
+            
+            # Use high-quality rendering states
+            gl.glEnable(0x0B71) # GL_DEPTH_TEST
+            gl.glEnable(0x8861) # GL_MULTISAMPLE
+            
+            # 1. Draw Mesh (Protein Cartoon)
+            if self._vbo_mesh and self._num_mesh_indices > 0:
+                self._draw_mesh(gl, proj, view)
+                
+            # 2. Draw Atoms (Sphere Impostors)
+            if self._vbo_atoms and len(self._positions) > 0:
+                self._draw_atoms(gl, proj, view)
+            
+            # Log only if frame is very slow
+            dt = time.time() - t_frame
+            if dt > 0.1: # < 10 FPS
+                print(f"[Performance] Slow frame: {dt:.3f}s")
+
+        except Exception as e:
+            print(f"[GL] Render error: {e}")
+            traceback.print_exc()
 
     # ------------------------------------------------------------------
     #  QPainter-based rendering (used on top of the GL surface)
@@ -549,7 +584,156 @@ class GLMoleculeWidget(_QOpenGLWidget):
         # Auto-fit camera
         self._auto_fit()
 
+        if self.gl_available:
+            self._update_gl_buffers()
+
         self.update()
+
+    def _init_shaders(self):
+        """Initialize GLSL shader programs."""
+        try:
+            from src.shared.qt_compat import QOpenGLShaderProgram, QOpenGLShader
+            
+            self._shader_mesh = QOpenGLShaderProgram()
+            self._shader_mesh.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, MESH_VERTEX_SHADER)
+            self._shader_mesh.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, MESH_FRAGMENT_SHADER)
+            self._shader_mesh.link()
+            
+            self._shader_sphere = QOpenGLShaderProgram()
+            self._shader_sphere.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, SPHERE_VERTEX_SHADER)
+            self._shader_sphere.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, SPHERE_FRAGMENT_SHADER)
+            self._shader_sphere.link()
+        except Exception as e:
+            print(f"[GL] Shader init error: {e}")
+            self.gl_available = False
+
+    def _update_gl_buffers(self):
+        """Upload molecule data to GPU buffers."""
+        if not self.gl_available: return
+        t_upd = time.time()
+        try:
+            self.makeCurrent()
+            gl = self.context().functions()
+            
+            # 1. Atoms Buffer (Center, Color, Radius)
+            if self._vbo_atoms: self._vbo_atoms.destroy()
+            n = len(self._positions)
+            if n > 0:
+                # Interleaved buffer: 3 floats Pos, 3 floats Color, 1 float Radius = 7 floats
+                data = np.zeros(n * 7, dtype=np.float32)
+                data[0::7] = self._positions[:, 0]
+                data[1::7] = self._positions[:, 1]
+                data[2::7] = self._positions[:, 2]
+                data[3::7] = self._colors[:, 0]
+                data[4::7] = self._colors[:, 1]
+                data[5::7] = self._colors[:, 2]
+                data[6::7] = self._radii * self.sphere_scale
+                
+                self._vbo_atoms = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+                self._vbo_atoms.create()
+                self._vbo_atoms.bind()
+                self._vbo_atoms.allocate(data.tobytes(), len(data.tobytes()))
+            
+            # 2. Protein Mesh Buffer
+            if self.molecule and self.molecule.properties.get('is_protein'):
+                from src.features.visualization_3d.services.cartoon_generator import generate_cartoon_mesh
+                t_mesh = time.time()
+                v, t, c = generate_cartoon_mesh(self.molecule)
+                if v is not None:
+                    if self._vbo_mesh: self._vbo_mesh.destroy()
+                    self._num_mesh_indices = len(t) * 3
+                    
+                    # Interleaved: Pos(3), Color(3), Normal(3) = 9 floats
+                    mdata = np.zeros(len(v) * 9, dtype=np.float32)
+                    mdata[0::9] = v[:, 0]
+                    mdata[1::9] = v[:, 1]
+                    mdata[2::9] = v[:, 2]
+                    mdata[3::9] = c[:, 0]
+                    mdata[4::9] = c[:, 1]
+                    mdata[5::9] = c[:, 2]
+                    # Normals (approximate for smooth look)
+                    norms = v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-6)
+                    mdata[6::9] = norms[:, 0]
+                    mdata[7::9] = norms[:, 1]
+                    mdata[8::9] = norms[:, 2]
+                    
+                    self._vbo_mesh = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+                    self._vbo_mesh.create()
+                    self._vbo_mesh.bind()
+                    self._vbo_mesh.allocate(mdata.tobytes(), len(mdata.tobytes()))
+                    
+                    self._ibo_mesh = QOpenGLBuffer(QOpenGLBuffer.Type.IndexBuffer)
+                    self._ibo_mesh.create()
+                    self._ibo_mesh.bind()
+                    self._ibo_mesh.allocate(t.astype(np.uint32).tobytes(), t.nbytes)
+                    print(f"[GL] Mesh buffer updated in {time.time()-t_mesh:.3f}s")
+            else:
+                self._vbo_mesh = None
+
+            print(f"[Performance] Total GL Buffer update took {time.time()-t_upd:.3f}s")
+
+        except Exception as e:
+            print(f"[GL] Buffer update error: {e}")
+
+    def _get_projection_matrix(self):
+        proj = QMatrix4x4()
+        aspect = self.width() / self.height() if self.height() > 0 else 1.0
+        proj.perspective(45.0, aspect, 0.1, 1000.0)
+        return proj
+
+    def _get_view_matrix(self):
+        view = QMatrix4x4()
+        view.translate(self.pan_x / self.zoom, -self.pan_y / self.zoom, -100.0 + self.zoom)
+        view.rotate(self.rot_x, 1, 0, 0)
+        view.rotate(self.rot_y, 0, 1, 0)
+        view.rotate(self.rot_z, 0, 0, 1)
+        return view
+
+    def _draw_atoms(self, gl, proj, view):
+        self._shader_sphere.bind()
+        self._shader_sphere.setUniformValue("projection", proj)
+        self._shader_sphere.setUniformValue("view", view)
+        
+        self._vbo_atoms.bind()
+        gl.glEnableVertexAttribArray(0) # Pos
+        gl.glVertexAttribPointer(0, 3, 0x1406, False, 28, None)
+        gl.glEnableVertexAttribArray(1) # Color
+        gl.glVertexAttribPointer(1, 3, 0x1406, False, 28, ctypes.c_void_p(12))
+        gl.glEnableVertexAttribArray(2) # Radius
+        gl.glVertexAttribPointer(2, 1, 0x1406, False, 28, ctypes.c_void_p(24))
+
+        # Using Instanced Rendering (6 vertices per instance)
+        # Location 0, 1, 2 are per-instance (divisor = 1)
+        gl.glVertexAttribDivisor(0, 1)
+        gl.glVertexAttribDivisor(1, 1)
+        gl.glVertexAttribDivisor(2, 1)
+        
+        gl.glDrawArraysInstanced(0x0004, 0, 6, len(self._positions))
+        
+        # Reset divisors for other shaders
+        gl.glVertexAttribDivisor(0, 0)
+        gl.glVertexAttribDivisor(1, 0)
+        gl.glVertexAttribDivisor(2, 0)
+        
+    def _draw_mesh(self, gl, proj, view):
+        self._shader_mesh.bind()
+        self._shader_mesh.setUniformValue("projection", proj)
+        self._shader_mesh.setUniformValue("view", view)
+        self._shader_mesh.setUniformValue("model", QMatrix4x4())
+        self._shader_mesh.setUniformValue("lightPos", QVector3D(50, 50, 100))
+        self._shader_mesh.setUniformValue("viewPos", QVector3D(0, 0, 100))
+        self._shader_mesh.setUniformValue("lightColor", QVector3D(1, 1, 1))
+        
+        self._vbo_mesh.bind()
+        self._ibo_mesh.bind()
+        gl.glEnableVertexAttribArray(0) # Pos
+        gl.glVertexAttribPointer(0, 3, 0x1406, False, 36, None)
+        gl.glEnableVertexAttribArray(1) # Color
+        gl.glVertexAttribPointer(1, 3, 0x1406, False, 36, ctypes.c_void_p(12))
+        gl.glEnableVertexAttribArray(2) # Normal
+        gl.glVertexAttribPointer(2, 3, 0x1406, False, 36, ctypes.c_void_p(24))
+        
+        gl.glDrawElements(0x0004, self._num_mesh_indices, 0x1405, None) # GL_UNSIGNED_INT is 0x1405
 
     def _pack_bonds(self, mol, atoms, atom_colors):
         """Pack bond endpoint data into flat numpy arrays."""

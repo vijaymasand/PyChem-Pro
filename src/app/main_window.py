@@ -165,6 +165,10 @@ class MainWindow(QMainWindow):
             plugin_api = PluginIntegrationAPI(self)
             self.plugin_manager.set_api(plugin_api)
             
+            # Connect to plugin events to refresh UI automatically
+            self.plugin_manager.add_event_handler('plugin_loaded', lambda e: self._refresh_plugin_tabs())
+            self.plugin_manager.add_event_handler('plugin_unloaded', lambda e: self._refresh_plugin_tabs())
+            
             # Initialize enhanced plugin interface
             self.enhanced_plugin_interface = EnhancedPluginManagerWidget(self.plugin_manager)
             
@@ -948,9 +952,9 @@ class MainWindow(QMainWindow):
     def _refresh_plugin_tabs(self):
         """Refresh plugin tabs, preserving the core viewer tabs."""
         if self.plugin_manager and hasattr(self, 'viewer_tabs'):
-            # Preserve the first 3 core tabs: 3D View, 2D View, 2D-Sketcher
-            while self.viewer_tabs.count() > 3:
-                self.viewer_tabs.removeTab(3)
+            # Preserve the first 2 core tabs: 3D View, 2D View (Sketcher moved to separate window)
+            while self.viewer_tabs.count() > 2:
+                self.viewer_tabs.removeTab(2)
             self._create_plugin_tabs()
 
     def _create_plugin_tabs(self):
@@ -961,7 +965,7 @@ class MainWindow(QMainWindow):
         loaded_plugins = self.plugin_manager.get_loaded_plugins()
         for plugin_name, plugin in loaded_plugins.items():
             try:
-                widget = plugin.create_widget()
+                widget = self.plugin_manager.get_plugin_widget(plugin_name)
                 if hasattr(widget, 'get_widget'):
                     # If it has get_widget, use it (standard PluginWidget)
                     tab_widget = widget.get_widget()

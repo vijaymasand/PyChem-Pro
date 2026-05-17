@@ -505,7 +505,11 @@ class PythonConsole(QWidget):
             
         if term.startswith('resname '):
             rn = term[8:].strip().upper()
-            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '') == rn)
+            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() == rn)
+            
+        if term.startswith('resn '):
+            rn = term[5:].strip().upper()
+            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() == rn)
             
         if term.startswith('resid ') or term.startswith('resi ') or term.startswith('resnum '):
             rn = term.split()[1].strip()
@@ -548,6 +552,17 @@ class PythonConsole(QWidget):
         
         if term.lower() in property_terms:
             return self._select_by_property(term)
+            
+        # Support residue name as shortcut (e.g. 'ALA')
+        term_upper = term.upper()
+        _AMINO_ACIDS = {
+            'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY', 'HIS', 'ILE',
+            'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
+            'MSE', 'SEC', 'PYL', 'HOH', 'WAT', 'SOL', 'DOD'
+        }
+        mol_res_names = {getattr(a, 'res_name', '').upper() for a in mol.atoms if getattr(a, 'res_name', None)}
+        if term_upper in mol_res_names or term_upper in _AMINO_ACIDS:
+            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() == term_upper)
         
         raise ValueError(f"Unknown selection term: '{term}'")
 
