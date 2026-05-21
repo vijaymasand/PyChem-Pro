@@ -359,28 +359,6 @@ class InputPanel(QWidget):
 
         layout.addWidget(export_group)
 
-        # ── Molecule Info ───────────────────────────────────────
-        info_group = QGroupBox("Molecule")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(0)
-
-        self.info_text = QTextEdit()
-        self.info_text.setReadOnly(True)
-        self.info_text.setMinimumHeight(96)
-        self.info_text.setMaximumHeight(128)
-        self.info_text.setFrameShape(QFrame.Shape.NoFrame)
-        self.info_text.setStyleSheet(
-            # Inside a QGroupBox already, so drop the border and
-            # blend with the card fill to remove visual clutter.
-            "QTextEdit { border: none; background: transparent; padding: 0; }"
-        )
-        self.info_text.setPlaceholderText(
-            "No molecule loaded."
-        )
-        info_layout.addWidget(self.info_text)
-
-        layout.addWidget(info_group)
 
         layout.addStretch()
 
@@ -411,31 +389,7 @@ class InputPanel(QWidget):
             self.progress_bar.setValue(value)
 
     def update_molecule_info(self, molecule):
-        if not molecule:
-            self.info_text.clear()
-            return
-
-        def _row(key, value):
-            return f"{key:<9} {value}"
-
-        info_lines = [
-            _row("Formula", molecule.molecular_formula()),
-            _row("Weight",  f"{molecule.molecular_weight():.2f} Da"),
-            _row("Atoms",   str(len(molecule.atoms))),
-            _row("Bonds",   str(len(molecule.bonds))),
-            _row("Charge",  str(molecule.total_charge())),
-            _row("Rings",   str(len(molecule.find_rings()))),
-        ]
-
-        charges = [a.partial_charge for a in molecule.atoms
-                   if a.partial_charge != 0]
-        if charges:
-            info_lines.append(
-                _row("Q range",
-                     f"{min(charges):+.3f}  to  {max(charges):+.3f}")
-            )
-
-        self.info_text.setPlainText("\n".join(info_lines))
+        pass
 
     def enable_tools(self, enabled=True):
         self.sdf_btn.setEnabled(enabled)

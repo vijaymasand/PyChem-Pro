@@ -429,9 +429,10 @@ def read_pdb(filepath):
         _auto_bond_pdb(mol)
     
     mol.end_bulk_load()
+    is_protein_flag = any(a.res_name in _AMINO_ACIDS for a in mol.atoms)
     mol.properties.update({'helix_ranges': helix_ranges, 'sheet_ranges': sheet_ranges,
-                           'is_protein': any(a.res_name in _AMINO_ACIDS for a in mol.atoms)})
-    print(f"[Performance] read_pdb took {time.time()-t0:.3f}s for {len(mol.atoms)} atoms")
+                           'is_protein': is_protein_flag})
+    print(f"[Performance] read_pdb took {time.time()-t0:.3f}s for {len(mol.atoms)} atoms, is_protein={is_protein_flag}")
     return mol
 
     # Enable bulk-load mode to suppress ring-cache invalidation per atom/bond

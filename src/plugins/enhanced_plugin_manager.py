@@ -132,13 +132,32 @@ class EnhancedPluginManager:
             # Check for Nuitka-specific indicators or relative paths
             if getattr(sys, 'frozen', False):
                 # We are running in a bundled executable
+                # Try multiple paths for Nuitka onefile/standalone compatibility
+                candidates = []
+                
+                # 1. Nuitka onefile: data files extracted relative to module __file__
+                module_dir = Path(__file__).parent.parent.parent
+                candidates.append(module_dir / "plugins")
+                
+                # 2. Nuitka standalone: data dirs relative to exe
                 exe_dir = Path(sys.executable).parent
-                # Nuitka standalone places data dirs relative to exe
-                bundled_path = exe_dir / "plugins"
-                if not bundled_path.exists():
-                    # Check for macOS bundle structure
-                    if platform.system() == "Darwin" and ".app/Contents/MacOS" in str(exe_dir):
-                        bundled_path = exe_dir.parent / "Resources" / "plugins"
+                candidates.append(exe_dir / "plugins")
+                
+                # 3. macOS bundle structure
+                if platform.system() == "Darwin" and ".app/Contents/MacOS" in str(exe_dir):
+                    candidates.append(exe_dir.parent / "Resources" / "plugins")
+                
+                # Use the first candidate that exists
+                bundled_path = None
+                for cand in candidates:
+                    if cand.exists():
+                        bundled_path = cand
+                        self.logger.info(f"Found bundled plugins at: {cand}")
+                        break
+                
+                if bundled_path is None:
+                    bundled_path = candidates[0]  # Default fallback
+                    self.logger.warning(f"No bundled plugins directory found. Tried: {[str(c) for c in candidates]}")
                 
                 self.bundled_plugins_directory = bundled_path
             else:

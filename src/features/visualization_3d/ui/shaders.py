@@ -3,6 +3,36 @@ GLSL Shaders for high-performance molecular visualization.
 Optimized for high-end GPUs like the RTX 3060.
 """
 
+# ─── LINE SHADER (Bonds/Sticks) ───────────────────────────────────────────────
+LINE_VERTEX_SHADER = """
+#version 330 core
+layout(location = 0) in vec3 aPos;
+layout(location = 1) in vec3 aColor;
+
+uniform mat4 view;
+uniform mat4 projection;
+
+out vec3 vColor;
+
+void main() {
+    vColor = aColor;
+    vec4 clipPos = projection * view * vec4(aPos, 1.0);
+    // Pull bonds forward significantly so they aren't hidden inside spheres
+    clipPos.z -= 0.025 * clipPos.w; 
+    gl_Position = clipPos;
+}
+"""
+
+LINE_FRAGMENT_SHADER = """
+#version 330 core
+out vec4 FragColor;
+in vec3 vColor;
+
+void main() {
+    FragColor = vec4(vColor, 1.0);
+}
+"""
+
 # ─── MESH SHADER (Cartoon/Ribbon) ─────────────────────────────────────────────
 MESH_VERTEX_SHADER = """
 #version 330 core
@@ -95,7 +125,7 @@ void main() {
     );
     vTexCoord = offsets[gl_VertexID % 6];
     
-    vec3 pos = aPos + (cameraRight * vTexCoord.x + cameraUp * vTexCoord.y) * size;
+    vec3 pos = aPos + (cameraRight * vTexCoord.x + cameraUp * vTexCoord.y) * vRadius;
     gl_Position = projection * view * vec4(pos, 1.0);
 }
 """

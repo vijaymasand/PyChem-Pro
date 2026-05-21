@@ -24,7 +24,7 @@ from src.shared.qt_compat import (
     QMessageBox, Qt, Signal, QFileDialog, QLineEdit,
     QSplitter, QFrame, QScrollArea, QSpinBox, QTreeWidget,
     QTreeWidgetItem, QDialog, QDialogButtonBox, QHeaderView,
-    QTimer, QThread
+    QTimer, QThread, QSettings
 )
 
 from src.plugins.enhanced_plugin_manager import EnhancedPluginManager
@@ -115,6 +115,11 @@ class EnhancedPluginManagerWidget(QWidget):
         self.install_file_btn = QPushButton("Install from File")
         self.install_file_btn.clicked.connect(self.install_from_file)
         filter_layout.addWidget(self.install_file_btn)
+        
+        # Choose plugins folder button
+        self.choose_folder_btn = QPushButton("Choose Plugins Folder")
+        self.choose_folder_btn.clicked.connect(self.choose_plugins_folder)
+        filter_layout.addWidget(self.choose_folder_btn)
         
         layout.addWidget(filter_group)
         
@@ -280,6 +285,33 @@ class EnhancedPluginManagerWidget(QWidget):
             self.worker.finished.connect(self.on_install_finished)
             self.worker.start()
     
+    def choose_plugins_folder(self):
+        """Open a directory dialog to choose an external plugins folder."""
+        settings = QSettings("PyChem", "PyChemPro")
+        current_dir = settings.value("custom_plugins_directory", "")
+        if not current_dir:
+            current_dir = str(self.plugin_manager.user_plugins_directory)
+            
+        selected_dir = QFileDialog.getExistingDirectory(
+            self, "Choose Plugins Folder", current_dir
+        )
+        
+        if selected_dir:
+            self.plugin_manager.user_plugins_directory = Path(selected_dir)
+            self.plugin_manager.discover_all_plugins()
+            self.refresh_plugin_list()
+            
+            # Persist custom folder path
+            settings.setValue("custom_plugins_directory", selected_dir)
+            
+            # Update status label
+            count = len(self.plugin_manager.get_all_plugins())
+            self.status_label.setText(f"Loaded custom plugins directory: {selected_dir} ({count} plugins found)")
+            QMessageBox.information(
+                self, "Plugins Folder Loaded",
+                f"Successfully loaded external plugins folder:\n{selected_dir}\n\nTotal plugins found: {count}"
+            )
+
     def on_install_progress(self, value: int, message: str):
         """Handle installation progress."""
         self.progress_bar.setValue(value)

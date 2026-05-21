@@ -42,7 +42,7 @@ DISPLAY_RADIUS = {
 }
 
 
-class MolViewer3D(QWidget):
+class SoftwareMolViewer3D(QWidget):
     """
     Software-rendered 3D molecular viewer with mouse interaction.
     Uses QPainter with QRadialGradient for smooth, realistic sphere rendering.
@@ -565,3 +565,249 @@ class MolViewer3D(QWidget):
 
     def _draw_dummy_spheres(self, painter, width, height):
         self._renderer._draw_dummy_spheres(self, painter, width, height)
+
+
+class MolViewer3D(QWidget):
+    # Public Signals (forwarding events from active child)
+    atom_hovered = Signal(int)
+    atom_clicked = Signal(int)
+    selection_changed = Signal(object)
+    delete_requested = Signal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from src.shared.qt_compat import QStackedWidget, QVBoxLayout
+        
+        # Create layouts
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.stacked = QStackedWidget(self)
+        layout.addWidget(self.stacked)
+        
+        # Instantiate children
+        self.software_viewer = SoftwareMolViewer3D(self)
+        
+        # Instantiate GL widget (safe if GL fails)
+        from src.features.visualization_3d.ui.gl_widget import GLMoleculeWidget
+        self.gl_viewer = GLMoleculeWidget(self)
+        
+        # Add to stack
+        self.stacked.addWidget(self.software_viewer)
+        self.stacked.addWidget(self.gl_viewer)
+        
+        # Connect signals
+        self.software_viewer.atom_hovered.connect(self.atom_hovered.emit)
+        self.software_viewer.atom_clicked.connect(self.atom_clicked.emit)
+        self.software_viewer.selection_changed.connect(self.selection_changed.emit)
+        self.software_viewer.delete_requested.connect(self.delete_requested.emit)
+        
+        self.gl_viewer.atom_hovered.connect(self.atom_hovered.emit)
+        self.gl_viewer.atom_clicked.connect(self.atom_clicked.emit)
+        self.gl_viewer.selection_changed.connect(self.selection_changed.emit)
+        self.gl_viewer.delete_requested.connect(self.delete_requested.emit)
+        
+        # Current active viewer
+        self.active_viewer = self.software_viewer
+        self.stacked.setCurrentWidget(self.software_viewer)
+        
+    @property
+    def molecule(self):
+        return self.active_viewer.molecule
+
+    @molecule.setter
+    def molecule(self, value):
+        self.software_viewer.molecule = value
+        self.gl_viewer.molecule = value
+
+    @property
+    def selected_atoms(self):
+        return self.active_viewer.selected_atoms
+
+    @selected_atoms.setter
+    def selected_atoms(self, value):
+        self.software_viewer.selected_atoms = value
+        # GLWidget doesn't support selected_atoms natively, but we mirror it
+        if hasattr(self.gl_viewer, 'selected_atoms'):
+            self.gl_viewer.selected_atoms = value
+
+    # Mirror camera and settings
+    @property
+    def rot_x(self): return self.active_viewer.rot_x
+    @rot_x.setter
+    def rot_x(self, val):
+        self.software_viewer.rot_x = val
+        self.gl_viewer.rot_x = val
+        
+    @property
+    def rot_y(self): return self.active_viewer.rot_y
+    @rot_y.setter
+    def rot_y(self, val):
+        self.software_viewer.rot_y = val
+        self.gl_viewer.rot_y = val
+
+    @property
+    def rot_z(self): return self.active_viewer.rot_z
+    @rot_z.setter
+    def rot_z(self, val):
+        self.software_viewer.rot_z = val
+        self.gl_viewer.rot_z = val
+
+    @property
+    def pan_x(self): return self.active_viewer.pan_x
+    @property
+    def pan_y(self): return self.active_viewer.pan_y
+    @property
+    def zoom(self): return self.active_viewer.zoom
+
+    @pan_x.setter
+    def pan_x(self, val):
+        self.software_viewer.pan_x = val
+        self.gl_viewer.pan_x = val
+
+    @pan_y.setter
+    def pan_y(self, val):
+        self.software_viewer.pan_y = val
+        self.gl_viewer.pan_y = val
+
+    @zoom.setter
+    def zoom(self, val):
+        self.software_viewer.zoom = val
+        self.gl_viewer.zoom = val
+
+    @property
+    def sphere_scale(self): return self.software_viewer.sphere_scale
+    @sphere_scale.setter
+    def sphere_scale(self, val):
+        self.software_viewer.sphere_scale = val
+        self.gl_viewer.sphere_scale = val
+
+    @property
+    def stick_scale(self): return self.software_viewer.stick_scale
+    @stick_scale.setter
+    def stick_scale(self, val):
+        self.software_viewer.stick_scale = val
+        self.gl_viewer.stick_scale = val
+
+    @property
+    def line_scale(self): return self.software_viewer.line_scale
+    @line_scale.setter
+    def line_scale(self, val):
+        self.software_viewer.line_scale = val
+
+    @property
+    def show_hydrogens(self): return self.software_viewer.show_hydrogens
+    @show_hydrogens.setter
+    def show_hydrogens(self, val):
+        self.software_viewer.show_hydrogens = val
+        self.gl_viewer.show_hydrogens = val
+
+    @property
+    def render_mode(self): return self.software_viewer.render_mode
+    @render_mode.setter
+    def render_mode(self, val):
+        self.software_viewer.render_mode = val
+        self.gl_viewer.render_mode = val
+
+    @property
+    def use_ssao(self): return getattr(self.software_viewer, 'use_ssao', False)
+    @use_ssao.setter
+    def use_ssao(self, val):
+        self.software_viewer.use_ssao = val
+
+    @property
+    def use_gouraud(self): return getattr(self.software_viewer, 'use_gouraud', False)
+    @use_gouraud.setter
+    def use_gouraud(self, val):
+        self.software_viewer.use_gouraud = val
+
+    @property
+    def bg_color(self): return self.software_viewer.bg_color
+    @bg_color.setter
+    def bg_color(self, val):
+        self.software_viewer.bg_color = val
+        self.gl_viewer.bg_color = val
+
+    # Method delegation
+    def set_molecule(self, molecule):
+        # Decide which viewer to use
+        from src.services.rendering.renderer_factory import RendererFactory
+        factory = RendererFactory()
+        
+        # Check if we should use GL for this molecule
+        use_gl = False
+        if molecule:
+            # Debug logging
+            is_protein = getattr(molecule, 'properties', {}).get('is_protein', False)
+            n_atoms = len(molecule.atoms) if hasattr(molecule, 'atoms') else 0
+            print(f"[DEBUG] set_molecule: is_protein={is_protein}, n_atoms={n_atoms}")
+            
+            # Check size threshold
+            if factory.should_use_gl(molecule):
+                # Ensure the GL widget actually succeeded in initialisation
+                if factory.check_gl_available(self.gl_viewer):
+                    use_gl = True
+                    print(f"[DEBUG] OpenGL available and threshold met, using GL")
+                else:
+                    print(f"[DEBUG] OpenGL not available (gl_available=False)")
+            else:
+                print(f"[DEBUG] Threshold not met for GL")
+        
+        if use_gl:
+            # Sync camera parameters from software to GL before switching
+            if self.active_viewer == self.software_viewer:
+                self.gl_viewer.rot_x = self.software_viewer.rot_x
+                self.gl_viewer.rot_y = self.software_viewer.rot_y
+                self.gl_viewer.rot_z = self.software_viewer.rot_z
+                self.gl_viewer.pan_x = self.software_viewer.pan_x
+                self.gl_viewer.pan_y = self.software_viewer.pan_y
+                self.gl_viewer.zoom = self.software_viewer.zoom
+                
+            self.active_viewer = self.gl_viewer
+            self.stacked.setCurrentWidget(self.gl_viewer)
+            self.gl_viewer.set_molecule(molecule)
+            print("[Viewer3D] Dynamic switch: Using accelerated OpenGL shaders (GPU)")
+        else:
+            # Sync camera parameters from GL to software before switching
+            if self.active_viewer == self.gl_viewer:
+                self.software_viewer.rot_x = self.gl_viewer.rot_x
+                self.software_viewer.rot_y = self.gl_viewer.rot_y
+                self.software_viewer.rot_z = self.gl_viewer.rot_z
+                self.software_viewer.pan_x = self.gl_viewer.pan_x
+                self.software_viewer.pan_y = self.gl_viewer.pan_y
+                self.software_viewer.zoom = self.gl_viewer.zoom
+                
+            self.active_viewer = self.software_viewer
+            self.stacked.setCurrentWidget(self.software_viewer)
+            self.software_viewer.set_molecule(molecule)
+            print("[Viewer3D] Dynamic switch: Using QPainter software engine (CPU)")
+
+    def clear(self):
+        self.software_viewer.clear()
+        self.gl_viewer.clear()
+
+    def clear_labels(self):
+        self.software_viewer.clear_labels()
+
+    def toggle_auto_rotate(self):
+        self.software_viewer.toggle_auto_rotate()
+
+    def reset_view(self):
+        self.active_viewer.reset_view()
+
+    def focus_on_atoms(self, atom_indices, padding_angstroms=0.0):
+        if self.active_viewer == self.software_viewer:
+            self.software_viewer.focus_on_atoms(atom_indices, padding_angstroms)
+        else:
+            self.gl_viewer._auto_fit()  # Fallback for GL
+
+    def export_image(self, filepath, dpi=300, bg_white=True):
+        if self.active_viewer == self.software_viewer:
+            return self.software_viewer.export_image(filepath, dpi, bg_white)
+        else:
+            # GL fallback
+            return self.gl_viewer.grabGeometry().save(filepath)
+
+    def update(self):
+        self.active_viewer.update()
+        super().update()

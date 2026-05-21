@@ -22,10 +22,17 @@ try:
         QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem, 
         QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsSimpleTextItem, 
         QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
-        QGraphicsItem, QToolBar, QDialogButtonBox
+        QGraphicsItem, QToolBar, QDialogButtonBox, QStackedWidget
     )
     from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop, QUrl
-    from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
+    from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform, QVector3D, QMatrix4x4
+    try:
+        from PySide6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, QOpenGLVertexArrayObject
+    except ImportError:
+        class QOpenGLShaderProgram: pass
+        class QOpenGLShader: pass
+        class QOpenGLBuffer: pass
+        class QOpenGLVertexArrayObject: pass
 
     QT_FRAMEWORK = "PySide6"
     
@@ -46,10 +53,17 @@ except ImportError as e:
             QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem, 
             QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsSimpleTextItem, 
             QGraphicsTextItem, QGraphicsItemGroup, QGraphicsProxyWidget,
-            QGraphicsItem, QToolBar, QDialogButtonBox
+            QGraphicsItem, QToolBar, QDialogButtonBox, QStackedWidget
         )
         from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop, QUrl
-        from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform
+        from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform, QVector3D, QMatrix4x4
+        try:
+            from PyQt6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, QOpenGLVertexArrayObject
+        except ImportError:
+            class QOpenGLShaderProgram: pass
+            class QOpenGLShader: pass
+            class QOpenGLBuffer: pass
+            class QOpenGLVertexArrayObject: pass
 
         QT_FRAMEWORK = "PyQt6"
         print("Using PyQt6 framework (PySide6 failed)")
@@ -239,6 +253,12 @@ except ImportError as e:
             def widget(self, index): return None
             class TabPosition:
                 North = 0
+        class QStackedWidget(QWidget):
+            def __init__(self, parent=None): pass
+            def addWidget(self, widget): pass
+            def setCurrentWidget(self, widget): pass
+            def setCurrentIndex(self, index): pass
+            def currentIndex(self): return 0
         class QColorDialog: pass
         class QComboBox:
             def __init__(self, parent=None): 
@@ -630,6 +650,13 @@ except ImportError as e:
                 ScrollBarAsNeeded = 2
         
         
+        class QVector3D: pass
+        class QMatrix4x4: pass
+        class QOpenGLShaderProgram: pass
+        class QOpenGLShader: pass
+        class QOpenGLBuffer: pass
+        class QOpenGLVertexArrayObject: pass
+        
         class QCoreApplication:
             @staticmethod
             def processEvents(): pass
@@ -894,7 +921,8 @@ __all__ = [
     'QSlider', 'QTextCursor', 'QPolygonF', 'QGroupBox', 'QTransform',
     'QDockWidget', 'QListWidget', 'QListWidgetItem', 'QDialog', 'QInputDialog', 'QFormLayout',
     'QCoreApplication', 'QPaintEvent', 'QStandardPaths',
-    'QGraphicsView', 'QGraphicsScene', 'QGraphicsItem', 'QGraphicsEllipseItem', 
+    'QGraphicsView', 'QGraphicsScene', 'QGraphicsItem', 'QGraphicsEllipseItem', 'QStackedWidget', 
+    'QVector3D', 'QMatrix4x4', 'QOpenGLShaderProgram', 'QOpenGLShader', 'QOpenGLBuffer', 'QOpenGLVertexArrayObject',
     'QGraphicsLineItem', 'QGraphicsRectItem', 'QGraphicsPolygonItem', 
     'QGraphicsPathItem', 'QGraphicsPixmapItem', 'QGraphicsSimpleTextItem', 
     'QGraphicsTextItem', 'QGraphicsItemGroup', 'QGraphicsProxyWidget',

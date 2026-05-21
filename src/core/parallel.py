@@ -31,8 +31,14 @@ class ParallelExecutor:
     @property
     def pool(self) -> ProcessPoolExecutor:
         if self._pool is None:
+            cores = os.cpu_count() or 4
+            workers = self.num_workers
+            print(f"[ParallelExecutor] Initializing ProcessPoolExecutor: "
+                  f"Total logical CPU cores detected = {cores}, "
+                  f"Core allocation fraction = {self._core_fraction * 100}%, "
+                  f"Workers spawned = {workers}")
             self._pool = ProcessPoolExecutor(
-                max_workers=self.num_workers,
+                max_workers=workers,
                 mp_context=_mp_context
             )
         return self._pool

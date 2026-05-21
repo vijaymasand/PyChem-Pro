@@ -157,8 +157,16 @@ class MainWindow(QMainWindow):
             # Initialize plugin configuration manager
             self.plugin_config_manager = PluginConfigManager()
             
+            # Load custom plugins directory if saved in QSettings
+            from src.shared.qt_compat import QSettings
+            settings = QSettings("PyChem", "PyChemPro")
+            custom_dir = settings.value("custom_plugins_directory", None)
+            
             # Initialize enhanced plugin manager
-            self.plugin_manager = EnhancedPluginManager()
+            if custom_dir:
+                self.plugin_manager = EnhancedPluginManager(user_plugins_directory=custom_dir)
+            else:
+                self.plugin_manager = EnhancedPluginManager()
             
             # Set up plugin API integration
             from src.plugins.utils.integration import PluginIntegrationAPI
@@ -368,6 +376,13 @@ class MainWindow(QMainWindow):
 
         dock_layout.addLayout(btn_row)
 
+        # Choose folder button
+        choose_folder_btn = QPushButton("Choose Plugins Folder")
+        choose_folder_btn.setObjectName("btnSecondary")
+        choose_folder_btn.setToolTip("Select directory containing external plugins")
+        choose_folder_btn.clicked.connect(self._choose_plugins_folder)
+        dock_layout.addWidget(choose_folder_btn)
+
         details_label = QLabel("Details")
         details_label.setObjectName("labelSection")
         dock_layout.addWidget(details_label)
@@ -512,6 +527,40 @@ class MainWindow(QMainWindow):
             self._refresh_plugin_list()
             self._refresh_plugin_tabs()
             self.status_bar.showMessage(f"Unloaded {unloaded_count} plugins")
+
+    def _choose_plugins_folder(self):
+        """Open a directory dialog to choose an external plugins folder."""
+        from pathlib import Path
+        
+        settings = QSettings("PyChem", "PyChemPro")
+        current_dir = settings.value("custom_plugins_directory", "")
+        if not current_dir and self.plugin_manager:
+            current_dir = str(self.plugin_manager.user_plugins_directory)
+            
+        selected_dir = QFileDialog.getExistingDirectory(
+            self, "Choose Plugins Folder", current_dir
+        )
+        
+        if selected_dir:
+            if self.plugin_manager:
+                self.plugin_manager.user_plugins_directory = Path(selected_dir)
+                self.plugin_manager.discover_all_plugins()
+                
+                # Auto-load enabled plugins from the newly loaded folder
+                self._auto_load_plugins()
+                
+                # Refresh UI lists
+                self._refresh_plugin_list()
+                self._refresh_plugin_tabs()
+                
+                # Persist custom folder path
+                settings.setValue("custom_plugins_directory", selected_dir)
+                
+                count = len(self.plugin_manager.get_all_plugins())
+                QMessageBox.information(
+                    self, "Plugins Folder Loaded",
+                    f"Successfully loaded external plugins folder:\n{selected_dir}\n\nTotal plugins found: {count}"
+                )
 
     def _refresh_plugin_tabs(self):
         """Update the plugin tabs to match loaded plugins."""

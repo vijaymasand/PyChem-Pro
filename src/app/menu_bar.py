@@ -170,6 +170,10 @@ def _build_plugins_menu(window, menu_bar):
     installed_plugins_action.triggered.connect(window._toggle_plugin_dock)
     plugins_menu.addAction(installed_plugins_action)
 
+    choose_folder_action = QAction("&Choose Plugins Folder...", window)
+    choose_folder_action.triggered.connect(window._choose_plugins_folder)
+    plugins_menu.addAction(choose_folder_action)
+
     plugins_menu.addSeparator()
 
     refresh_plugins_action = QAction("&Refresh Plugins", window)

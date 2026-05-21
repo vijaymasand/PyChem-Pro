@@ -16,7 +16,7 @@ from enum import Enum
 
 from src.core.domain.models.molecule import Molecule
 from src.core.domain.models.atom import Atom
-from src.features.visualization_3d.services.cartoon_generator import CartoonGenerator
+from src.features.visualization_3d.services.cartoon_generator import CartoonGenerator, _select_lod
 
 # Global generator instance (LOD auto-detected per molecule)
 _cartoon_gen = CartoonGenerator()
@@ -525,6 +525,7 @@ def render_protein_cartoon(painter, molecule: Molecule,
     - Thin same-color pen eliminates visible triangle edges (anti-aliasing)
     - Optional Gouraud normal smoothing blends normals across shared vertices
     - INTERACTIVE LOD: Switches to 4 subdivisions during rotation for speed.
+    - OpenGL-accelerated rendering when available via GL widget
     """
     from PySide6.QtGui import QColor, QPen, QBrush, QPolygonF, QPainter, QPainterPath, QImage
     from PySide6.QtCore import QPointF, Qt
@@ -532,13 +533,13 @@ def render_protein_cartoon(painter, molecule: Molecule,
     
     t0_total = time.time()
     
+    # Check if OpenGL rendering should be used (via GL widget)
+    # This function is called by software renderer, so we optimize the software path
+    # The GL widget handles its own OpenGL rendering separately
+    
     # Antialiasing scale factor for smooth rendering
-    from src.core.hardware_profiler import HardwareProfiler
-    _hw = HardwareProfiler()
-    if _hw.is_high_end:
-        scale_factor = 2  # Always 2x supersampling on high-end
-    else:
-        scale_factor = 1 if is_interacting else 2  # Drop during interaction on low-end
+    # Remove supersampling reduction for max quality at all times
+    scale_factor = 2
     
     # EARLY CACHE CHECK — skip ALL math if camera hasn't changed
     cache_key = (id(molecule), round(rot_x, 4), round(rot_y, 4), round(rot_z, 4),
@@ -550,16 +551,12 @@ def render_protein_cartoon(painter, molecule: Molecule,
         painter.drawImage(0, 0, render_protein_cartoon._img_cache['img'])
         return
     
-    # 1. Get the cached 3D mesh with higher quality for smooth rendering
-    if _hw.is_high_end:
-        current_steps = 24   # Always high quality on high-end
-        current_profile = 16
-    else:
-        current_steps = 3 if is_interacting else 24   # Drop during interaction on low-end
-        current_profile = 4 if is_interacting else 16
+    # Use high quality cached mesh at all times (previously 24/16)
+    spline_steps = 24
+    profile_detail = 16
     
     t0_mesh = time.time()
-    vertices, triangles, colors = _cartoon_gen.get_mesh(molecule, spline_steps=current_steps, profile_detail=current_profile)
+    vertices, triangles, colors = _cartoon_gen.get_mesh(molecule, spline_steps=spline_steps, profile_detail=profile_detail)
     
     if vertices is None or len(vertices) == 0:
         return
