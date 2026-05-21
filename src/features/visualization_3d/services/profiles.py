@@ -190,19 +190,21 @@ def hex_to_rgb_array(hex_str: str) -> np.ndarray:
                          int(hex_str[4:6], 16) / 255.0])
     return np.array([0.2, 0.8, 0.2])
 
-def segment_colors(pp):
+def segment_colors(pp, theme_colors=None):
     """
     Determine the start and end colors for a segment.
-    Uses dynamic colors from src.shared.ui.theme.
+    Uses dynamic colors from src.shared.ui.theme if theme_colors not provided.
     """
-    from src.shared.ui.theme import COLORS
+    if theme_colors is None:
+        from src.shared.ui.theme import COLORS
+        theme_colors = COLORS
     
     type1, type2 = transition(pp)
 
     color_map = {
-        HELIX:  hex_to_rgb_array(COLORS.get('ss_helix', '#dc3232')),
-        STRAND: hex_to_rgb_array(COLORS.get('ss_sheet', '#3296dc')),
-        COIL:   hex_to_rgb_array(COLORS.get('ss_coil', '#b4b4b4')),
+        HELIX:  hex_to_rgb_array(theme_colors.get('ss_helix', '#dc3232')),
+        STRAND: hex_to_rgb_array(theme_colors.get('ss_sheet', '#3296dc')),
+        COIL:   hex_to_rgb_array(theme_colors.get('ss_coil', '#b4b4b4')),
     }
     
     c1 = color_map.get(type1, color_map.get(COIL)).copy()

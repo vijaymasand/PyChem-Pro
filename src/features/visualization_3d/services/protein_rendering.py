@@ -556,7 +556,8 @@ def render_protein_cartoon(painter, molecule: Molecule,
     profile_detail = 16
     
     t0_mesh = time.time()
-    vertices, triangles, colors = _cartoon_gen.get_mesh(molecule, spline_steps=spline_steps, profile_detail=profile_detail)
+    from src.shared.ui.theme import COLORS
+    vertices, triangles, colors = _cartoon_gen.get_mesh(molecule, spline_steps=spline_steps, profile_detail=profile_detail, theme_colors=COLORS)
     
     if vertices is None or len(vertices) == 0:
         return

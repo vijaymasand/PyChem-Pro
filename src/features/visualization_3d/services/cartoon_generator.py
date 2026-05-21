@@ -44,7 +44,7 @@ def _select_lod(n_atoms: int) -> dict:
         return LOD_SETTINGS['ultra_low']
 
 
-def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None):
+def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None, theme_colors=None):
     """
     Generate the full protein cartoon mesh using Multiprocessing.
     Utilizes 50% of available CPU cores.
@@ -58,6 +58,10 @@ def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None):
         lod = _select_lod(len(molecule.atoms))
         spline_steps = spline_steps or lod['spline_steps']
         profile_detail = profile_detail or lod['profile_detail']
+        
+    if theme_colors is None:
+        from src.shared.ui.theme import COLORS
+        theme_colors = COLORS.copy()
     
     # Performance logging
     import time
@@ -83,7 +87,7 @@ def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None):
     num_workers = max(1, (os.cpu_count() or 4) // 2)
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         futures = [
-            executor.submit(generate_chain_mesh_vectorized, chain, spline_steps, profile_detail)
+            executor.submit(generate_chain_mesh_vectorized, chain, spline_steps, profile_detail, theme_colors)
             for chain in chains_to_process
         ]
         for future in futures:
@@ -128,14 +132,15 @@ class CartoonGenerator:
     def __init__(self):
         self._cache = {}  # molecule id -> (vertices, triangles, colors)
     
-    def get_mesh(self, molecule, spline_steps=None, profile_detail=None):
+    def get_mesh(self, molecule, spline_steps=None, profile_detail=None, theme_colors=None):
         """Retrieve cached mesh or generate a new one."""
-        # Include LOD settings in cache key
-        mol_id = (id(molecule), spline_steps, profile_detail)
+        # Include LOD settings and a hash of colors in cache key
+        color_hash = hash(frozenset(theme_colors.items())) if theme_colors else 0
+        mol_id = (id(molecule), spline_steps, profile_detail, color_hash)
         if mol_id in self._cache:
             return self._cache[mol_id]
         
-        mesh = generate_cartoon_mesh(molecule, spline_steps=spline_steps, profile_detail=profile_detail)
+        mesh = generate_cartoon_mesh(molecule, spline_steps=spline_steps, profile_detail=profile_detail, theme_colors=theme_colors)
         if mesh[0] is not None:
             self._cache[mol_id] = mesh
         

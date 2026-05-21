@@ -18,7 +18,7 @@ from src.features.visualization_3d.services.profiles import (
     segment_profiles, segment_colors
 )
 
-def generate_chain_mesh_vectorized(planes: List[PeptidePlane], spline_steps: int, profile_detail: int):
+def generate_chain_mesh_vectorized(planes: List[PeptidePlane], spline_steps: int, profile_detail: int, theme_colors: dict = None):
     """
     Generate mesh for an entire chain using optimized vectorization.
     
@@ -43,7 +43,7 @@ def generate_chain_mesh_vectorized(planes: List[PeptidePlane], spline_steps: int
     MAX_SEGMENTS = 500  # Limit segments to prevent memory explosion
     if n_segments > MAX_SEGMENTS:
         # Use simplified mesh for very large proteins
-        return _generate_simplified_mesh(planes, spline_steps, profile_detail)
+        return _generate_simplified_mesh(planes, spline_steps, profile_detail, theme_colors)
 
     # 1. Prepare Batch Data
     # Extract positions, sides, and normals for all 4-plane windows
@@ -78,7 +78,7 @@ def generate_chain_mesh_vectorized(planes: List[PeptidePlane], spline_steps: int
         u2_batch.append(p2[:, 0])
         v2_batch.append(p2[:, 1])
         
-        c1, c2 = segment_colors(pp2)
+        c1, c2 = segment_colors(pp2, theme_colors)
         colors1.append(c1)
         colors2.append(c2)
         
@@ -192,7 +192,7 @@ def generate_chain_mesh_vectorized(planes: List[PeptidePlane], spline_steps: int
     return flat_verts, triangles, flat_colors
 
 
-def _generate_simplified_mesh(planes: List[PeptidePlane], spline_steps: int, profile_detail: int):
+def _generate_simplified_mesh(planes: List[PeptidePlane], spline_steps: int, profile_detail: int, theme_colors: dict = None):
     """
     Generate simplified mesh for very large proteins to prevent memory explosion.
     
@@ -201,7 +201,7 @@ def _generate_simplified_mesh(planes: List[PeptidePlane], spline_steps: int, pro
     n_planes = len(planes)
     if n_planes <= 10:
         # Small proteins use normal vectorized approach
-        return generate_chain_mesh_vectorized(planes, spline_steps, profile_detail)
+        return generate_chain_mesh_vectorized(planes, spline_steps, profile_detail, theme_colors)
     
     # For large proteins, use progressive sampling
     
@@ -214,4 +214,4 @@ def _generate_simplified_mesh(planes: List[PeptidePlane], spline_steps: int, pro
     if len(sampled_planes) < 4:
         return None, None, None
     
-    return generate_chain_mesh_vectorized(sampled_planes, spline_steps, max(3, profile_detail // 2))
+    return generate_chain_mesh_vectorized(sampled_planes, spline_steps, max(3, profile_detail // 2), theme_colors)

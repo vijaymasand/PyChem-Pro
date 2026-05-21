@@ -159,9 +159,11 @@ class GLMoleculeWidget(_QOpenGLWidget):
         # Rendering settings (subset matching MolViewer3D)
         self.show_hydrogens = True
         self.render_mode = 'ball_and_stick'
-        self.sphere_scale = 0.6
-        self.stick_scale = 1.0
+        self._sphere_scale = 0.6
+        self._stick_scale = 1.0
+        self._line_scale = 1.0
         self.bg_color = QColor(COLORS['viewer_bg'])
+        self.custom_atom_colors = {}
 
         # Atom data — packed numpy arrays for fast rendering
         self._positions = None   # (N, 3) float32
@@ -197,6 +199,38 @@ class GLMoleculeWidget(_QOpenGLWidget):
         # GL version info (populated in initializeGL)
         self._gl_version_string = ''
         self._gl_renderer_string = ''
+
+    @property
+    def sphere_scale(self):
+        return self._sphere_scale
+
+    @sphere_scale.setter
+    def sphere_scale(self, value):
+        if self._sphere_scale != value:
+            self._sphere_scale = value
+            if self.gl_available:
+                self._update_gl_buffers()
+            self.update()
+
+    @property
+    def stick_scale(self):
+        return self._stick_scale
+
+    @stick_scale.setter
+    def stick_scale(self, value):
+        if self._stick_scale != value:
+            self._stick_scale = value
+            self.update()
+
+    @property
+    def line_scale(self):
+        return self._line_scale
+
+    @line_scale.setter
+    def line_scale(self, value):
+        if self._line_scale != value:
+            self._line_scale = value
+            self.update()
 
         self.setMinimumSize(400, 400)
         self.setMouseTracking(True)
@@ -360,7 +394,8 @@ class GLMoleculeWidget(_QOpenGLWidget):
                 self._shader_line.setUniformValue('projection', proj)
                 self._shader_line.setUniformValue('view', view)
                 
-                gl.glLineWidth(2.0)
+                # Apply stick scale to the line width (OpenGL doesn't support true cylinders natively without geometry shaders)
+                gl.glLineWidth(max(1.0, 2.0 * self.stick_scale))
                 if self._vao_lines: self._vao_lines.bind()
                 self._vbo_lines.bind()
                 self._shader_line.enableAttributeArray(0)
@@ -389,6 +424,51 @@ class GLMoleculeWidget(_QOpenGLWidget):
         except Exception as e:
             print(f"[GL] Render error: {e}")
             traceback.print_exc()
+            
+        # Draw 2D overlays (Selection rings, etc) using QPainter over the GL surface
+        if self.selected_atoms and self._positions is not None:
+            painter = QPainter(self)
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                
+                # Project selected atoms
+                w = self.width()
+                h = self.height()
+                cx = w / 2.0 + self.pan_x
+                cy = h / 2.0 + self.pan_y
+
+                cos_x = math.cos(math.radians(self.rot_x))
+                sin_x = math.sin(math.radians(self.rot_x))
+                cos_y = math.cos(math.radians(self.rot_y))
+                sin_y = math.sin(math.radians(self.rot_y))
+                cos_z = math.cos(math.radians(self.rot_z))
+                sin_z = math.sin(math.radians(self.rot_z))
+
+                old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
+
+                for atom_idx in self.selected_atoms:
+                    new_idx = old_to_new.get(atom_idx, atom_idx)
+                    if new_idx >= len(self._positions):
+                        continue
+                    
+                    pos = self._positions[new_idx]
+                    x, y, z = pos[0], pos[1], pos[2]
+
+                    x1 = x * cos_y + z * sin_y
+                    z1 = -x * sin_y + z * cos_y
+                    y1 = y * cos_x - z1 * sin_x
+                    z2 = y * sin_x + z1 * cos_x
+
+                    x2 = x1 * cos_z - y1 * sin_z
+                    y2 = x1 * sin_z + y1 * cos_z
+
+                    sx = cx + x2 * self.zoom
+                    sy = cy - y2 * self.zoom
+                    
+                    radius = self._radii[new_idx] * self.zoom * self.sphere_scale
+                    self._draw_selection_ring(painter, sx, sy, radius)
+            finally:
+                painter.end()
 
     # ------------------------------------------------------------------
     #  QPainter-based rendering (used on top of the GL surface)
@@ -519,6 +599,13 @@ class GLMoleculeWidget(_QOpenGLWidget):
         painter.setBrush(QBrush(gradient))
         painter.drawEllipse(QRectF(sx - radius, sy - radius, radius * 2, radius * 2))
 
+    def _draw_selection_ring(self, painter: QPainter, sx: float, sy: float, radius: float):
+        pen = QPen(QColor(255, 255, 0))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QRectF(sx - radius - 3, sy - radius - 3, (radius + 3) * 2, (radius + 3) * 2))
+
     def _draw_bonds_painter(self, painter, cx, cy, cos_x, sin_x, cos_y, sin_y, cos_z=1.0, sin_z=0.0):
         """Draw bonds as simple coloured lines (split-coloured)."""
         starts = self._bond_starts   # (M, 3)
@@ -605,6 +692,38 @@ class GLMoleculeWidget(_QOpenGLWidget):
     # ------------------------------------------------------------------
     #  Molecule data
     # ------------------------------------------------------------------
+
+    def set_atom_colors(self, colors_dict):
+        """Set custom colors for specific atoms and rebuild GPU buffers."""
+        if colors_dict is None:
+            self.custom_atom_colors = {}
+        else:
+            self.custom_atom_colors.update(colors_dict)
+            
+        if self.molecule and self._colors is not None:
+            old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
+            for atom in self.molecule.atoms:
+                idx = atom.index
+                new_idx = old_to_new.get(idx, idx)
+                if new_idx >= len(self._colors):
+                    continue
+                if idx in self.custom_atom_colors:
+                    c = self.custom_atom_colors[idx]
+                    if isinstance(c, tuple) and len(c) == 3:
+                        if isinstance(c[0], int):
+                            c = [x / 255.0 for x in c]
+                    elif hasattr(c, 'redF'):
+                        c = [c.redF(), c.greenF(), c.blueF()]
+                    self._colors[new_idx] = c
+                else:
+                    self._colors[new_idx] = _element_color_float(atom.symbol)
+            
+            # Re-upload bond colors
+            self._pack_bonds(self.molecule, self.molecule.atoms, self._colors) # The atoms array here is ignored for unpacking since we remap it inside _pack_bonds correctly now
+            
+            if self.gl_available:
+                self._update_gl_buffers()
+        self.update()
 
     def set_molecule(self, mol):
         """Load a molecule for rendering.
@@ -740,9 +859,10 @@ class GLMoleculeWidget(_QOpenGLWidget):
             # 2. Protein Mesh Buffer
             if self.molecule and self.molecule.properties.get('is_protein'):
                 from src.features.visualization_3d.services.cartoon_generator import generate_cartoon_mesh
+                from src.shared.ui.theme import COLORS
                 t_mesh = time.time()
                 # Always use high quality mesh for GPU renderer (it can easily handle it)
-                v, t, c = generate_cartoon_mesh(self.molecule, spline_steps=24, profile_detail=16)
+                v, t, c = generate_cartoon_mesh(self.molecule, spline_steps=24, profile_detail=16, theme_colors=COLORS)
                 if v is not None:
                     if self._vbo_mesh: self._vbo_mesh.destroy()
                     indices = t.flatten()
@@ -885,8 +1005,11 @@ class GLMoleculeWidget(_QOpenGLWidget):
             
             if new_bi >= n_atoms or new_ei >= n_atoms:
                 continue
-            a1 = atoms[new_bi]
-            a2 = atoms[new_ei]
+            
+            # Fetch original atoms from the molecule for property checks
+            a1 = mol.atoms[bi]
+            a2 = mol.atoms[ei]
+            
             if not a1.has_coords or not a2.has_coords:
                 continue
             # Skip hydrogen bonds if hydrogens hidden

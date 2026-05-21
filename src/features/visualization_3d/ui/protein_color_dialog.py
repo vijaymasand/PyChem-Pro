@@ -263,9 +263,9 @@ class ProteinColorDialog(QDialog):
         parent = self.parent()
         if parent:
             if hasattr(parent, 'viewer_3d'):
-                if hasattr(parent.viewer_3d, 'repaint'):
-                    parent.viewer_3d.repaint()
-                if hasattr(parent.viewer_3d, 'update'):
+                if hasattr(parent.viewer_3d, 'rebuild_mesh'):
+                    parent.viewer_3d.rebuild_mesh()
+                elif hasattr(parent.viewer_3d, 'update'):
                     parent.viewer_3d.update()
             
             if hasattr(parent, 'status_bar'):

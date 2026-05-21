@@ -620,6 +620,25 @@ class MolViewer3D(QWidget):
         self.software_viewer.molecule = value
         self.gl_viewer.molecule = value
 
+    def rebuild_mesh(self):
+        """Force the GL viewer to rebuild its mesh buffers (e.g. after color changes)."""
+        if hasattr(self.gl_viewer, '_update_gl_buffers') and self.gl_viewer.gl_available:
+            self.gl_viewer._update_gl_buffers()
+        self.update()
+
+    def set_selected(self, atom_indices):
+        self.software_viewer.set_selected(atom_indices)
+        if hasattr(self.gl_viewer, 'set_selected'):
+            self.gl_viewer.set_selected(atom_indices)
+        else:
+            self.gl_viewer.selected_atoms = set(atom_indices)
+            self.gl_viewer.update()
+
+    def set_atom_colors(self, colors_dict):
+        self.software_viewer.set_atom_colors(colors_dict)
+        if hasattr(self.gl_viewer, 'set_atom_colors'):
+            self.gl_viewer.set_atom_colors(colors_dict)
+
     @property
     def selected_atoms(self):
         return self.active_viewer.selected_atoms
