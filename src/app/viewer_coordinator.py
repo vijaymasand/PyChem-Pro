@@ -18,8 +18,6 @@ def toggle_hydrogens(window):
     checked = window.input_panel.show_h_check.isChecked()
     window.viewer_3d.show_hydrogens = checked
     window.viewer_3d.update()
-    window.viewer_2d.show_hydrogens = checked
-    window.viewer_2d.update()
 
 
 def toggle_labels(window):

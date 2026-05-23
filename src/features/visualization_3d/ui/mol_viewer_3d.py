@@ -112,9 +112,11 @@ class SoftwareMolViewer3D(QWidget):
         self._rotation_timer = QTimer(self)
 
         # Rendering settings
-        self.show_hydrogens = True
+        self.show_hydrogens = False
         self.show_labels = False
         self.show_sidechains = False
+        self.show_sasa_surface = False
+        self.show_sasa_selected_only = False
         self.render_mode = 'ball_and_stick'  # 'spacefill', 'wireframe', 'cartoon', 'ribbon', 'backbone'
         self.custom_atom_modes = {}
         self.custom_atom_colors = {}  # atom_idx -> (r, g, b) tuple
@@ -722,6 +724,46 @@ class MolViewer3D(QWidget):
         self.gl_viewer.show_hydrogens = val
 
     @property
+    def show_labels(self): return self.software_viewer.show_labels
+    @show_labels.setter
+    def show_labels(self, val):
+        self.software_viewer.show_labels = val
+        if hasattr(self.gl_viewer, 'show_labels'):
+            self.gl_viewer.show_labels = val
+
+    @property
+    def label_color(self): return self.software_viewer.label_color
+    @label_color.setter
+    def label_color(self, val):
+        self.software_viewer.label_color = val
+        if hasattr(self.gl_viewer, 'label_color'):
+            self.gl_viewer.label_color = val
+
+    @property
+    def show_sidechains(self): return self.software_viewer.show_sidechains
+    @show_sidechains.setter
+    def show_sidechains(self, val):
+        self.software_viewer.show_sidechains = val
+        if hasattr(self.gl_viewer, 'show_sidechains'):
+            self.gl_viewer.show_sidechains = val
+
+    @property
+    def show_sasa_surface(self): return getattr(self.software_viewer, 'show_sasa_surface', False)
+    @show_sasa_surface.setter
+    def show_sasa_surface(self, val):
+        self.software_viewer.show_sasa_surface = val
+        if hasattr(self.gl_viewer, 'show_sasa_surface'):
+            self.gl_viewer.show_sasa_surface = val
+
+    @property
+    def show_sasa_selected_only(self): return getattr(self.software_viewer, 'show_sasa_selected_only', False)
+    @show_sasa_selected_only.setter
+    def show_sasa_selected_only(self, val):
+        self.software_viewer.show_sasa_selected_only = val
+        if hasattr(self.gl_viewer, 'show_sasa_selected_only'):
+            self.gl_viewer.show_sasa_selected_only = val
+
+    @property
     def render_mode(self): return self.software_viewer.render_mode
     @render_mode.setter
     def render_mode(self, val):
@@ -826,6 +868,15 @@ class MolViewer3D(QWidget):
         else:
             # GL fallback
             return self.gl_viewer.grabGeometry().save(filepath)
+
+    def _render(self, painter, width, height, is_export=False, export_scale=1.0):
+        """Delegate rendering to the active viewer. Used for printing and high-res export."""
+        if self.active_viewer == self.software_viewer:
+            self.software_viewer._render(painter, width, height, is_export, export_scale)
+        else:
+            # GL viewer doesn't natively support QPainter export rendering with scale parameter, 
+            # so we map to its internal QPainter fallback
+            self.gl_viewer._render_with_painter(painter, width, height)
 
     def update(self):
         self.active_viewer.update()

@@ -157,7 +157,7 @@ class GLMoleculeWidget(_QOpenGLWidget):
         self.zoom = 40.0
 
         # Rendering settings (subset matching MolViewer3D)
-        self.show_hydrogens = True
+        self._show_hydrogens = False
         self.render_mode = 'ball_and_stick'
         self._sphere_scale = 0.6
         self._stick_scale = 1.0
@@ -199,6 +199,17 @@ class GLMoleculeWidget(_QOpenGLWidget):
         # GL version info (populated in initializeGL)
         self._gl_version_string = ''
         self._gl_renderer_string = ''
+
+    @property
+    def show_hydrogens(self):
+        return getattr(self, '_show_hydrogens', True)
+
+    @show_hydrogens.setter
+    def show_hydrogens(self, value):
+        if getattr(self, '_show_hydrogens', True) != value:
+            self._show_hydrogens = value
+            if self.molecule:
+                self.set_molecule(self.molecule)
 
     @property
     def sphere_scale(self):
@@ -748,6 +759,8 @@ class GLMoleculeWidget(_QOpenGLWidget):
         protein_atoms = []
         ligand_atoms = []
         for a in mol.atoms:
+            if a.symbol == 'H' and not self.show_hydrogens:
+                continue
             if getattr(a, 'is_hetatm', False):
                 ligand_atoms.append(a)
             else:
@@ -998,6 +1011,12 @@ class GLMoleculeWidget(_QOpenGLWidget):
         for bond in bonds:
             bi = bond.begin_atom_idx
             ei = bond.end_atom_idx
+
+            nbi = old_to_new.get(bi)
+            nei = old_to_new.get(ei)
+
+            if nbi is None or nei is None:
+                continue
             
             # Map original indices to ordered indices
             new_bi = old_to_new.get(bi, bi)
