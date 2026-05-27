@@ -105,30 +105,35 @@ class Bond(OasaBond, DrawableObject):
             self.paper.toSelectionLayer(self._focus_item)
         else:
             if self._focus_item:
-                self.paper.removeItem(self._focus_item)
+                try:
+                    self.paper.removeItem(self._focus_item)
+                except RuntimeError:
+                    pass
                 self._focus_item = None
 
     def set_selected(self, select):
         if not self.paper: return
         if self._selection_item:
             try: self.paper.removeItem(self._selection_item)
-            except: pass
+            except RuntimeError: pass
+            except Exception: pass
             self._selection_item = None
             
         if select:
             self._selection_item = self.paper.addLine(self.atoms[0].pos + self.atoms[1].pos,
                                     self.line_width + 4, Settings.selection_color)
             self.paper.toSelectionLayer(self._selection_item)
-        else:
-            if self._selection_item:
-                self.paper.removeItem(self._selection_item)
-                self._selection_item = None
 
     def clear_drawings(self):
         if not self.paper: return
         for item in self._main_items:
-            self.paper.removeFocusable(item)
-            self.paper.removeItem(item)
+            try:
+                self.paper.removeFocusable(item)
+                self.paper.removeItem(item)
+            except RuntimeError:
+                pass
+            except Exception:
+                pass
         self._main_items = []
         if self._focus_item: self.set_focus(False)
         if self._selection_item: self.set_selected(False)
