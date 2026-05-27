@@ -132,18 +132,30 @@ class Atom(OasaAtom, DrawableObject):
     def clear_drawings(self):
         if not self.paper: return
         if self._focusable_item:
-            self.paper.removeFocusable(self._focusable_item)
-            self.paper.removeItem(self._focusable_item)
+            try:
+                self.paper.removeFocusable(self._focusable_item)
+                self.paper.removeItem(self._focusable_item)
+            except RuntimeError: pass
+            except Exception: pass
             self._focusable_item = None
         for item in self._main_items + self._mark_items:
-            self.paper.removeItem(item)
+            try:
+                self.paper.removeItem(item)
+            except RuntimeError: pass
+            except Exception: pass
         self._main_items = []
         self._mark_items = []
         if self._focus_item:
-            self.paper.removeItem(self._focus_item)
+            try:
+                self.paper.removeItem(self._focus_item)
+            except RuntimeError: pass
+            except Exception: pass
             self._focus_item = None
         if self._selection_item:
-            self.paper.removeItem(self._selection_item)
+            try:
+                self.paper.removeItem(self._selection_item)
+            except RuntimeError: pass
+            except Exception: pass
             self._selection_item = None
 
     def draw(self):
@@ -265,24 +277,26 @@ class Atom(OasaAtom, DrawableObject):
             self.paper.toSelectionLayer(self._focus_item)
         else:
             if self._focus_item:
-                self.paper.removeItem(self._focus_item)
+                try:
+                    self.paper.removeItem(self._focus_item)
+                except RuntimeError:
+                    pass
+                except Exception:
+                    pass
                 self._focus_item = None
 
     def set_selected(self, select):
         if not self.paper: return
         if self._selection_item:
             try: self.paper.removeItem(self._selection_item)
-            except: pass
+            except RuntimeError: pass
+            except Exception: pass
             self._selection_item = None
             
         if select:
             rect = self.x - 4, self.y - 4, self.x + 4, self.y + 4
             self._selection_item = self.paper.addEllipse(rect, fill=Settings.selection_color)
             self.paper.toSelectionLayer(self._selection_item)
-        else:
-            if self._selection_item:
-                self.paper.removeItem(self._selection_item)
-                self._selection_item = None
 
     def eat_atom(self, victim):
         """ Merge victim atom into self. """

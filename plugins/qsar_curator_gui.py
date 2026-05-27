@@ -67,8 +67,17 @@ class CurationWorker(QThread):
     def run(self):
         try:
             self.log_signal.emit("Loading dataset...")
+            def read_csv_safe(path, **kwargs):
+                try:
+                    return pd.read_csv(path, **kwargs)
+                except Exception as e:
+                    err_name = type(e).__name__
+                    if err_name.startswith('Uni') and err_name.endswith('Error'):
+                        return pd.read_csv(path, encoding='latin1', **kwargs)
+                    raise
+
             # Load CSV. Pandas handles standard comma separation natively.
-            df = pd.read_csv(self.source_file)
+            df = read_csv_safe(self.source_file)
             initial_count = len(df)
             self.log_signal.emit(f"Loaded {initial_count} rows.")
 

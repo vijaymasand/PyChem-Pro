@@ -128,11 +128,20 @@ class DescriptorPruningWidget(PluginWidget):
             y_data = None
             ids = None
 
+            def read_csv_safe(path, **kwargs):
+                try:
+                    return pd.read_csv(path, **kwargs)
+                except Exception as e:
+                    err_name = type(e).__name__
+                    if err_name.startswith('Uni') and err_name.endswith('Error'):
+                        return pd.read_csv(path, encoding='latin1', **kwargs)
+                    raise
+
             # --- PHASE 1: AUTO-DISCOVERY ---
             for f in self.desc_files:
-                df_head = pd.read_csv(f, nrows=2)
+                df_head = read_csv_safe(f, nrows=2)
                 if target_dv in df_head.columns:
-                    full_df = pd.read_csv(f)
+                    full_df = read_csv_safe(f)
                     y_data = full_df[target_dv]
                     ids = full_df.iloc[:, 0]
                     self.status_text.append(f"Found DV '{target_dv}' in {os.path.basename(f)}")
@@ -147,7 +156,7 @@ class DescriptorPruningWidget(PluginWidget):
             all_processed_dfs = []
             for i, f_path in enumerate(self.desc_files):
                 self.status_text.append(f"Processing {os.path.basename(f_path)}...")
-                df = pd.read_csv(f_path)
+                df = read_csv_safe(f_path)
                 X = df.select_dtypes(include=[np.number])
 
                 if target_dv in X.columns:
