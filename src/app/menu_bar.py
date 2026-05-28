@@ -159,6 +159,11 @@ def _build_tools_menu(window, menu_bar):
     
     window._lipo_menu_actions = [logp_action, lipo_contrib_action, lipo_color_action]
 
+    tools_menu.addSeparator()
+    chem_space_action = QAction("Chemical Space Visualization", window)
+    chem_space_action.triggered.connect(window._launch_chemical_space_viz)
+    tools_menu.addAction(chem_space_action)
+
 
 # ── Plugins ───────────────────────────────────────────────────────
 
