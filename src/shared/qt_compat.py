@@ -13,7 +13,7 @@ try:
         QMenuBar, QMenu, QStatusBar, QFileDialog, QMessageBox,
         QSplitter, QTabWidget, QColorDialog, QComboBox, QPushButton,
         QFrame, QLabel, QLineEdit, QCheckBox, QTreeWidget,
-        QTreeWidgetItem, QTextEdit, QProgressBar, QSpinBox,
+        QTreeWidgetItem, QTextEdit, QProgressBar, QProgressDialog, QSpinBox,
         QDoubleSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
         QScrollArea, QGridLayout, QRadioButton, QButtonGroup,
         QSizePolicy, QSlider, QGroupBox, QDockWidget, QListWidget,
@@ -44,7 +44,7 @@ except ImportError as e:
             QMenuBar, QMenu, QStatusBar, QFileDialog, QMessageBox,
             QSplitter, QTabWidget, QColorDialog, QComboBox, QPushButton,
             QFrame, QLabel, QLineEdit, QCheckBox, QTreeWidget,
-            QTreeWidgetItem, QTextEdit, QProgressBar, QSpinBox,
+            QTreeWidgetItem, QTextEdit, QProgressBar, QProgressDialog, QSpinBox,
             QDoubleSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
             QScrollArea, QGridLayout, QRadioButton, QButtonGroup,
             QSizePolicy, QSlider, QGroupBox, QDockWidget, QListWidget,
@@ -174,6 +174,11 @@ except ImportError as e:
         class QGroupBox:
             def __init__(self, title=None, parent=None): pass
             def setTitle(self, title): pass
+        
+        class QDockWidget(QWidget):
+            def __init__(self, title=None, parent=None): pass
+            def setWidget(self, widget): pass
+            def setAllowedAreas(self, areas): pass
         
         class QToolBar:
             def __init__(self, parent=None): pass
@@ -359,6 +364,12 @@ except ImportError as e:
             def setValue(self, value): pass
             def setStyleSheet(self, style): pass
             def setVisible(self, visible): pass
+        class QProgressDialog(QWidget):
+            def __init__(self, labelText, cancelButtonText, minimum, maximum, parent=None): pass
+            def setRange(self, minimum, maximum): pass
+            def setValue(self, value): pass
+            def setWindowModality(self, windowModality): pass
+            def close(self): pass
         class QSpinBox:
             def __init__(self, parent=None): pass
             def setRange(self, minimum, maximum): pass
