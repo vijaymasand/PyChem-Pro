@@ -612,6 +612,16 @@ class MainWindow(QMainWindow):
         self.sketcher_window.raise_()
         self.sketcher_window.activateWindow()
 
+    def _launch_chemical_space_viz(self):
+        """Launch the Chemical Space Visualization tool."""
+        if not hasattr(self, 'chem_space_window'):
+            from src.features.chemical_space.ui_engine import ChemicalSpaceWindow
+            self.chem_space_window = ChemicalSpaceWindow()
+        
+        self.chem_space_window.show()
+        self.chem_space_window.raise_()
+        self.chem_space_window.activateWindow()
+
     def _on_conversion_done(self, molecule, error):
         _mol_ctrl.on_conversion_done(self, molecule, error)
 
