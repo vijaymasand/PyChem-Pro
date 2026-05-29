@@ -216,7 +216,7 @@ class ChemicalSpaceWindow(QMainWindow):
         
         color_layout.addWidget(QLabel("Palette:"))
         self.combo_cmap = QComboBox()
-        self.combo_cmap.addItems(["viridis", "plasma", "inferno", "magma", "cividis", "coolwarm", "Spectral"])
+        self.combo_cmap.addItems(["viridis", "plasma", "inferno", "magma", "cividis", "coolwarm", "Spectral", 'twilight', 'twilight_shifted', 'turbo', 'berlin', 'managua', 'vanimo', 'Blues', 'BrBG', 'BuGn', 'BuPu', 'CMRmap', 'GnBu', 'Greens', 'Greys', 'OrRd', 'Oranges', 'PRGn', 'PiYG', 'PuBu', 'PuBuGn', 'PuOr', 'PuRd', 'Purples', 'RdBu', 'RdGy', 'RdPu', 'RdYlBu', 'RdYlGn', 'Reds'])
         color_layout.addWidget(self.combo_cmap)
         app_layout.addLayout(color_layout)
 
