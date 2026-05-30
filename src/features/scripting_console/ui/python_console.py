@@ -176,6 +176,7 @@ class PythonConsole(QWidget):
             'help_cmds': self._show_help,
             'pose': self._pose,
             'docking_pose': self._pose,
+            'smiles': self._smiles,
         }
         # Pre-import numpy
         try:
@@ -848,6 +849,64 @@ class PythonConsole(QWidget):
         self._append_output(f"Docking pose generated: {len(ligand_indices)} ligand atoms, "
                             f"{len(nearby_res)} residues, {len(interactions)} interactions.")
         return interactions
+
+    def _smiles(self, expr=None):
+        """smiles('organic') — generate SMILES for selected atoms."""
+        mol = self._namespace.get('mol')
+        if not mol:
+            self._append_text("No molecule loaded.", COLORS['warning'])
+            return ""
+            
+        if expr is not None:
+            if isinstance(expr, str):
+                indices = self._sele(expr)
+            else:
+                indices = list(expr)
+        else:
+            indices = self._get_selected()
+            
+        if not indices:
+            self._append_output("No atoms selected for SMILES generation.")
+            return ""
+            
+        try:
+            submol = mol.clone()
+            to_remove = [i for i in range(len(submol.atoms)) if i not in set(indices)]
+            submol.remove_atoms(to_remove)
+            
+            # Ensure aromaticity is perceived (PDBs often lack explicit aromatic bonds)
+            submol.perceive_aromaticity()
+            
+            from src.features.smiles_generator.generator import generate_smiles
+            
+            # Handle disconnected fragments by selecting the largest one (e.g. main ligand)
+            fragments = submol.get_fragments()
+            
+            if not fragments:
+                self._append_text("No connected fragments found.", COLORS['error'])
+                return ""
+                
+            # Pick the largest fragment by atom count
+            largest_frag_indices = max(fragments, key=len)
+            
+            frag_mol = submol.clone()
+            frag_to_remove = [i for i in range(len(frag_mol.atoms)) if i not in set(largest_frag_indices)]
+            frag_mol.remove_atoms(frag_to_remove)
+            
+            smi = generate_smiles(frag_mol)
+            
+            if not smi:
+                self._append_text("Failed to generate a valid SMILES.", COLORS['error'])
+                return ""
+                
+            if len(fragments) > 1:
+                self._append_output(f"Selected largest fragment ({len(largest_frag_indices)} atoms) from {len(fragments)} fragments.")
+                
+            self._append_output(f"SMILES: {smi}")
+            return smi
+        except Exception as e:
+            self._append_text(f"Error generating SMILES: {e}", COLORS['error'])
+            return ""
 
     # ─── Internals ─────────────────────────────────────────────────
 
