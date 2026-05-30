@@ -109,35 +109,44 @@ class MouseController:
 
         if was_click and btn == Qt.MouseButton.LeftButton:
             atom_idx = self._hit_test(event.position())
-            if atom_idx >= 0:
-                v.atom_clicked.emit(atom_idx)
-            else:
-                # Click on empty space -> clear selection
-                if v.selected_atoms:
-                    v.selected_atoms.clear()
-                    v.selection_changed.emit(set())
-                    v.update()
-
-        if was_click and btn == Qt.MouseButton.RightButton:
-            atom_idx = self._hit_test(event.position())
-            if atom_idx >= 0:
-                # Toggle atom selection
-                if atom_idx in v.selected_atoms:
-                    v.selected_atoms.discard(atom_idx)
+            if atom_idx != -1:
+                modifiers = event.modifiers()
+                if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                    if atom_idx in v.selected_atoms:
+                        v.selected_atoms.remove(atom_idx)
+                        if hasattr(v, '_measure_atoms') and atom_idx in v._measure_atoms:
+                            v._measure_atoms.remove(atom_idx)
+                    else:
+                        v.selected_atoms.add(atom_idx)
+                        if not hasattr(v, '_measure_atoms'):
+                            v._measure_atoms = []
+                        v._measure_atoms.append(atom_idx)
                 else:
-                    v.selected_atoms.add(atom_idx)
+                    v.selected_atoms = {atom_idx}
+                    if not hasattr(v, '_measure_atoms'):
+                        v._measure_atoms = []
+                    v._measure_atoms.append(atom_idx)
+                    
+                    if len(v._measure_atoms) > 3:
+                        v._measure_atoms.pop(0)
+                        
+                if hasattr(v, '_measure_atoms'):
+                    if len(v._measure_atoms) == 2:
+                        self._complete_distance_measurement()
+                    elif len(v._measure_atoms) == 3:
+                        self._complete_angle_measurement()
+                
                 v.selection_changed.emit(set(v.selected_atoms))
-                # Add to measurement picks
-                v._measure_atoms.append(atom_idx)
-                if len(v._measure_atoms) == 2:
-                    self._complete_distance_measurement()
-                elif len(v._measure_atoms) == 3:
-                    self._complete_angle_measurement()
+                v.atom_clicked.emit(atom_idx)
                 v.update()
             else:
-                # Right-click on empty: clear measurements
-                v._measure_atoms.clear()
-                v._measurements.clear()
+                if v.selected_atoms:
+                    v.selected_atoms.clear()
+                if hasattr(v, '_measure_atoms'):
+                    v._measure_atoms.clear()
+                if hasattr(v, '_measurements'):
+                    v._measurements.clear()
+                v.selection_changed.emit(set())
                 v.update()
 
         v._last_mouse_pos = None
