@@ -178,6 +178,10 @@ class PainterRenderer:
                 continue
 
             x, y, z = atom.x, atom.y, atom.z
+            if hasattr(v, '_centroid') and v._centroid is not None:
+                x -= v._centroid[0]
+                y -= v._centroid[1]
+                z -= v._centroid[2]
 
             # Rotation around Y then X
             x1 = x * cos_y + z * sin_y
