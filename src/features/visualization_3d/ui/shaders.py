@@ -6,30 +6,94 @@ Optimized for high-end GPUs like the RTX 3060.
 # ─── LINE SHADER (Bonds/Sticks) ───────────────────────────────────────────────
 LINE_VERTEX_SHADER = """
 #version 330 core
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aColor;
+layout(location = 0) in vec3 aPos1;
+layout(location = 1) in vec3 aPos2;
+layout(location = 2) in vec3 aColor1;
+layout(location = 3) in vec3 aColor2;
+layout(location = 4) in vec2 aCorner;
 
 uniform mat4 view;
 uniform mat4 projection;
+uniform float stick_scale;
 
-out vec3 vColor;
+out vec3 vColor1;
+out vec3 vColor2;
+out vec2 vTexCoord;
+out vec3 vCenter;
+out float vRadius;
 
 void main() {
-    vColor = aColor;
-    vec4 clipPos = projection * view * vec4(aPos, 1.0);
-    // Pull bonds forward significantly so they aren't hidden inside spheres
-    clipPos.z -= 0.025 * clipPos.w; 
-    gl_Position = clipPos;
+    vColor1 = aColor1;
+    vColor2 = aColor2;
+    vTexCoord = aCorner;
+    
+    // View space positions
+    vec3 v1 = vec3(view * vec4(aPos1, 1.0));
+    vec3 v2 = vec3(view * vec4(aPos2, 1.0));
+    
+    vec3 dir = v2 - v1;
+    float len = length(dir);
+    if (len > 0.0) dir = dir / len;
+    
+    // Billboard right vector (orthogonal to dir and view Z)
+    vec3 right = normalize(cross(dir, vec3(0.0, 0.0, 1.0)));
+    
+    // The user prefers the 'professional grade' thickness observed when radius = 0.075.
+    // At 100% scale (stick_scale = 1.0), the radius will now be exactly this perfect thickness.
+    float radius = 0.075 * stick_scale;
+    vRadius = radius;
+    
+    // Base position along the line
+    vec3 basePos = mix(v1, v2, aCorner.y);
+    vCenter = basePos;
+    
+    // Offset by width
+    vec3 finalPos = basePos + right * (aCorner.x * radius);
+    
+    gl_Position = projection * vec4(finalPos, 1.0);
 }
 """
 
 LINE_FRAGMENT_SHADER = """
 #version 330 core
 out vec4 FragColor;
-in vec3 vColor;
+
+in vec3 vColor1;
+in vec3 vColor2;
+in vec2 vTexCoord;
+in vec3 vCenter;
+in float vRadius;
+
+uniform mat4 projection;
 
 void main() {
-    FragColor = vec4(vColor, 1.0);
+    float x = vTexCoord.x;
+    float x2 = x * x;
+    if (x2 > 1.0) discard;
+    
+    float z = sqrt(1.0 - x2);
+    vec3 normal = vec3(x, 0.0, z); // Approximate normal in view space
+    
+    vec3 lightDir = normalize(vec3(0.3, 0.5, 1.0));
+    float diff = max(dot(normal, lightDir), 0.0);
+    float spec = pow(max(dot(normal, normalize(lightDir + vec3(0,0,1))), 0.0), 30.0);
+    
+    vec3 vColor = vTexCoord.y < 0.5 ? vColor1 : vColor2;
+    
+    vec3 ambient = 0.4 * vColor;
+    vec3 diffuse = 0.6 * diff * vColor;
+    vec3 specular = 0.2 * spec * vec3(1.0);
+    
+    // Soft edge for anti-aliasing
+    float edge = 1.0 - smoothstep(0.96, 1.0, x2);
+    
+    FragColor = vec4(ambient + diffuse + specular, edge);
+    
+    // Update depth
+    vec4 viewPos = vec4(vCenter, 1.0);
+    viewPos.z += z * vRadius;
+    vec4 clipPos = projection * viewPos;
+    gl_FragDepth = (clipPos.z / clipPos.w) * 0.5 + 0.5;
 }
 """
 
