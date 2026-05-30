@@ -399,30 +399,41 @@ class GLMoleculeWidget(_QOpenGLWidget):
                     
                 if self._vao_atoms: self._vao_atoms.release()
 
-            # 3. Draw Bonds (Lines)
+            # 3. Draw Bonds (Sticks/Cylinders)
             if self._vbo_lines and self._num_lines > 0:
                 self._shader_line.bind()
                 self._shader_line.setUniformValue('projection', proj)
                 self._shader_line.setUniformValue('view', view)
                 
-                # Apply stick scale to the line width (OpenGL doesn't support true cylinders natively without geometry shaders)
-                gl.glLineWidth(max(1.0, 2.0 * self.stick_scale))
+                # PySide6 lacks setUniformValue(str, float) overload, use native GL function
+                loc = self._shader_line.uniformLocation('stick_scale')
+                if loc != -1:
+                    gl.glUniform1f(loc, float(self.stick_scale))
                 if self._vao_lines: self._vao_lines.bind()
                 self._vbo_lines.bind()
                 self._shader_line.enableAttributeArray(0)
-                self._shader_line.setAttributeBuffer(0, 0x1406, 0, 3, 24)
+                self._shader_line.setAttributeBuffer(0, 0x1406, 0, 3, 56)
                 self._shader_line.enableAttributeArray(1)
-                self._shader_line.setAttributeBuffer(1, 0x1406, 12, 3, 24)
+                self._shader_line.setAttributeBuffer(1, 0x1406, 12, 3, 56)
+                self._shader_line.enableAttributeArray(2)
+                self._shader_line.setAttributeBuffer(2, 0x1406, 24, 3, 56)
+                self._shader_line.enableAttributeArray(3)
+                self._shader_line.setAttributeBuffer(3, 0x1406, 36, 3, 56)
+                self._shader_line.enableAttributeArray(4)
+                self._shader_line.setAttributeBuffer(4, 0x1406, 48, 2, 56)
                 
                 if is_mesh_active:
                     num_ligand_lines = self._num_lines - self._ligand_bond_start
                     if num_ligand_lines > 0:
-                        gl.glDrawArrays(0x0001, self._ligand_bond_start, num_ligand_lines)
+                        gl.glDrawArrays(0x0004, self._ligand_bond_start, num_ligand_lines) # 0x0004 = GL_TRIANGLES
                 else:
-                    gl.glDrawArrays(0x0001, 0, self._num_lines)
+                    gl.glDrawArrays(0x0004, 0, self._num_lines)
                     
                 self._shader_line.disableAttributeArray(0)
                 self._shader_line.disableAttributeArray(1)
+                self._shader_line.disableAttributeArray(2)
+                self._shader_line.disableAttributeArray(3)
+                self._shader_line.disableAttributeArray(4)
                 self._vbo_lines.release()
                 if self._vao_lines: self._vao_lines.release()
                 self._shader_line.release()
@@ -442,19 +453,10 @@ class GLMoleculeWidget(_QOpenGLWidget):
             try:
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
                 
-                # Project selected atoms
                 w = self.width()
                 h = self.height()
-                cx = w / 2.0 + self.pan_x
-                cy = h / 2.0 + self.pan_y
-
-                cos_x = math.cos(math.radians(self.rot_x))
-                sin_x = math.sin(math.radians(self.rot_x))
-                cos_y = math.cos(math.radians(self.rot_y))
-                sin_y = math.sin(math.radians(self.rot_y))
-                cos_z = math.cos(math.radians(self.rot_z))
-                sin_z = math.sin(math.radians(self.rot_z))
-
+                mvp = proj * view
+                
                 old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
 
                 for atom_idx in self.selected_atoms:
@@ -463,21 +465,25 @@ class GLMoleculeWidget(_QOpenGLWidget):
                         continue
                     
                     pos = self._positions[new_idx]
-                    x, y, z = pos[0], pos[1], pos[2]
-
-                    x1 = x * cos_y + z * sin_y
-                    z1 = -x * sin_y + z * cos_y
-                    y1 = y * cos_x - z1 * sin_x
-                    z2 = y * sin_x + z1 * cos_x
-
-                    x2 = x1 * cos_z - y1 * sin_z
-                    y2 = x1 * sin_z + y1 * cos_z
-
-                    sx = cx + x2 * self.zoom
-                    sy = cy - y2 * self.zoom
+                    vec = QVector3D(float(pos[0]), float(pos[1]), float(pos[2]))
+                    clip = mvp.map(vec)
                     
-                    radius = self._radii[new_idx] * self.zoom * self.sphere_scale
+                    # Convert NDC to screen coordinates
+                    sx = (clip.x() + 1.0) * 0.5 * w
+                    sy = (1.0 - clip.y()) * 0.5 * h
+                    
+                    # Calculate radius scaling based on depth
+                    view_pos = view.map(vec)
+                    distance = view_pos.z()
+                    if distance < -0.1:
+                        # Perspective projection scales radius by roughly (h/2) / (tan(fov/2) * -z)
+                        scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -distance)
+                    else:
+                        scale = 1.0
+                        
+                    radius = self._radii[new_idx] * scale * self.sphere_scale
                     self._draw_selection_ring(painter, sx, sy, radius)
+
             finally:
                 painter.end()
 
@@ -913,15 +919,29 @@ class GLMoleculeWidget(_QOpenGLWidget):
             else:
                 self._vbo_mesh = None
                 
-            # 3. Create Line VBO
+            # 3. Create Line VBO (Cylinder Impostors)
             if self._bond_starts is not None and len(self._bond_starts) > 0:
-                self._num_lines = len(self._bond_starts) * 2
-                line_data = np.empty((len(self._bond_starts), 2, 6), dtype=np.float32)
-                line_data[:, 0, 0:3] = self._bond_starts
-                line_data[:, 0, 3:6] = self._bond_start_colors
-                line_data[:, 1, 0:3] = self._bond_ends
-                line_data[:, 1, 3:6] = self._bond_end_colors
-                line_data = line_data.reshape(-1, 6)
+                N_bonds = len(self._bond_starts)
+                self._num_lines = N_bonds * 6
+                
+                line_data = np.empty((N_bonds, 6, 14), dtype=np.float32)
+                starts = self._bond_starts
+                ends = self._bond_ends
+                colors1 = self._bond_start_colors
+                colors2 = self._bond_end_colors
+                
+                line_data[:, :, 0:3] = starts[:, np.newaxis, :]
+                line_data[:, :, 3:6] = ends[:, np.newaxis, :]
+                line_data[:, :, 6:9] = colors1[:, np.newaxis, :]
+                line_data[:, :, 9:12] = colors2[:, np.newaxis, :]
+                
+                corners = np.array([
+                    [-1.0, 0.0], [ 1.0, 0.0], [ 1.0, 1.0],
+                    [-1.0, 0.0], [ 1.0, 1.0], [-1.0, 1.0]
+                ], dtype=np.float32)
+                line_data[:, :, 12:14] = corners
+                
+                line_data = line_data.reshape(-1, 14)
                 
                 from src.shared.qt_compat import QOpenGLBuffer
                 self._vbo_lines = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
@@ -1008,6 +1028,17 @@ class GLMoleculeWidget(_QOpenGLWidget):
         lig_starts, lig_ends, lig_start_colors, lig_end_colors = [], [], [], []
 
         old_to_new = getattr(mol, 'properties', {}).get('_old_to_new_idx', {})
+        
+        # Precompute rings for bond offsets
+        rings = []
+        if hasattr(mol, 'find_rings'):
+            rings = mol.find_rings()
+        bond_to_ring = {}
+        for ring in rings:
+            for i in range(len(ring)):
+                a, b = ring[i], ring[(i+1) % len(ring)]
+                bond_to_ring[frozenset([a, b])] = ring
+                
         for bond in bonds:
             bi = bond.begin_atom_idx
             ei = bond.end_atom_idx
@@ -1041,18 +1072,67 @@ class GLMoleculeWidget(_QOpenGLWidget):
             # Check if this bond belongs to the ligand
             is_ligand = getattr(a1, 'is_hetatm', False) or getattr(a2, 'is_hetatm', False)
             
-            if is_ligand:
-                lig_starts.append(p1)
-                lig_ends.append(p2)
-                lig_start_colors.append(atom_colors[new_bi])
-                lig_end_colors.append(atom_colors[new_ei])
+            bond_lines = []
+            if is_ligand and (bond.is_double or bond.is_aromatic or bond.order >= 1.5):
+                # Calculate a 3D offset perpendicular to the bond
+                d = p2 - p1
+                length = np.linalg.norm(d)
+                if length > 1e-4:
+                    d = d / length
+                    offset_dir = None
+                    # Try to use ring center for offset direction
+                    ring = bond_to_ring.get(frozenset([bi, ei]))
+                    if ring:
+                        center = np.zeros(3, dtype=np.float32)
+                        valid_atoms = 0
+                        for idx in ring:
+                            r_new_idx = old_to_new.get(idx)
+                            if r_new_idx is not None and r_new_idx < n_atoms:
+                                center += self._positions[r_new_idx]
+                                valid_atoms += 1
+                        if valid_atoms > 0:
+                            center /= valid_atoms
+                            mid = (p1 + p2) / 2.0
+                            to_center = center - mid
+                            to_center -= np.dot(to_center, d) * d
+                            norm = np.linalg.norm(to_center)
+                            if norm > 1e-4:
+                                offset_dir = to_center / norm
+                    
+                    if offset_dir is None:
+                        # Fallback orthogonal vector
+                        up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+                        if abs(np.dot(d, up)) > 0.9:
+                            up = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+                        offset_dir = np.cross(d, up)
+                        offset_dir /= np.linalg.norm(offset_dir)
+                    
+                    offset = offset_dir * 0.15 * self.stick_scale
+                    
+                    if bond.is_aromatic or bond.order == 1.5:
+                        bond_lines.append((p1, p2))
+                        bond_lines.append((p1 + offset, p2 + offset))
+                    else:
+                        bond_lines.append((p1 + offset*0.7, p2 + offset*0.7))
+                        bond_lines.append((p1 - offset*0.7, p2 - offset*0.7))
+                else:
+                    bond_lines.append((p1, p2))
             else:
-                prot_starts.append(p1)
-                prot_ends.append(p2)
-                prot_start_colors.append(atom_colors[new_bi])
-                prot_end_colors.append(atom_colors[new_ei])
+                bond_lines.append((p1, p2))
+            
+            for start_p, end_p in bond_lines:
+                if is_ligand:
+                    lig_starts.append(start_p)
+                    lig_ends.append(end_p)
+                    lig_start_colors.append(atom_colors[new_bi])
+                    lig_end_colors.append(atom_colors[new_ei])
+                else:
+                    prot_starts.append(start_p)
+                    prot_ends.append(end_p)
+                    prot_start_colors.append(atom_colors[new_bi])
+                    prot_end_colors.append(atom_colors[new_ei])
 
-        self._ligand_bond_start = len(prot_starts) * 2
+        self._ligand_bond_start = len(prot_starts) * 6
 
         starts = prot_starts + lig_starts
         ends = prot_ends + lig_ends
