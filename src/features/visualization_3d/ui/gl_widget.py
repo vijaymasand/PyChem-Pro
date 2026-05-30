@@ -1029,9 +1029,9 @@ class GLMoleculeWidget(_QOpenGLWidget):
 
         old_to_new = getattr(mol, 'properties', {}).get('_old_to_new_idx', {})
         
-        # Precompute rings for bond offsets
+        # Precompute rings for bond offsets (Skip for large structures to avoid 25s freeze)
         rings = []
-        if hasattr(mol, 'find_rings'):
+        if hasattr(mol, 'find_rings') and len(atoms) < 1500:
             rings = mol.find_rings()
         bond_to_ring = {}
         for ring in rings:
