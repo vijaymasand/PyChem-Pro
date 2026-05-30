@@ -25,7 +25,7 @@ import numpy as np
 
 from src.shared.qt_compat import (
     Qt, QColor, QPainter, QPen, QBrush, QFont, QPointF, QRectF,
-    QRadialGradient, QWheelEvent, QVector3D, QMatrix4x4,
+    QRadialGradient, QWheelEvent, QVector3D, QVector4D, QMatrix4x4,
     QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, Signal
 )
 from src.shared.ui.theme import COLORS
@@ -147,6 +147,7 @@ class GLMoleculeWidget(_QOpenGLWidget):
         self.molecule = None
         self.gl_available = None
         self.selected_atoms = set()
+        self._selected_atoms_ordered = []
 
         # Camera state (matches MolViewer3D defaults)
         self.rot_x = 20.0
@@ -164,6 +165,17 @@ class GLMoleculeWidget(_QOpenGLWidget):
         self._line_scale = 1.0
         self.bg_color = QColor(COLORS['viewer_bg'])
         self.custom_atom_colors = {}
+        
+        # Docking pose view settings
+        self.show_ligands_in_cartoon = True
+        self.visible_sidechains = set()
+        self.interaction_lines = []
+        self.custom_atom_modes = {}
+        self.labels = {}
+        self.labeled_residues = {}
+        self.residue_label_settings = {}
+        self.label_font_size = 9
+        self.label_color = QColor(255, 255, 255, 230)
 
         # Atom data — packed numpy arrays for fast rendering
         self._positions = None   # (N, 3) float32
@@ -390,12 +402,7 @@ class GLMoleculeWidget(_QOpenGLWidget):
             if self._vbo_atoms and len(self._positions) > 0:
                 if self._vao_atoms: self._vao_atoms.bind()
                 
-                # If protein mesh is active, only draw ligand spheres!
-                if is_mesh_active and self._ligand_start < len(self._positions):
-                    num_ligand_atoms = len(self._positions) - self._ligand_start
-                    self._draw_atoms(gl, proj, view, start_idx=self._ligand_start, count=num_ligand_atoms)
-                elif not is_mesh_active:
-                    self._draw_atoms(gl, proj, view)
+                self._draw_atoms(gl, proj, view)
                     
                 if self._vao_atoms: self._vao_atoms.release()
 
@@ -422,12 +429,7 @@ class GLMoleculeWidget(_QOpenGLWidget):
                 self._shader_line.enableAttributeArray(4)
                 self._shader_line.setAttributeBuffer(4, 0x1406, 48, 2, 56)
                 
-                if is_mesh_active:
-                    num_ligand_lines = self._num_lines - self._ligand_bond_start
-                    if num_ligand_lines > 0:
-                        gl.glDrawArrays(0x0004, self._ligand_bond_start, num_ligand_lines) # 0x0004 = GL_TRIANGLES
-                else:
-                    gl.glDrawArrays(0x0004, 0, self._num_lines)
+                gl.glDrawArrays(0x0004, 0, self._num_lines)
                     
                 self._shader_line.disableAttributeArray(0)
                 self._shader_line.disableAttributeArray(1)
@@ -447,8 +449,8 @@ class GLMoleculeWidget(_QOpenGLWidget):
             print(f"[GL] Render error: {e}")
             traceback.print_exc()
             
-        # Draw 2D overlays (Selection rings, etc) using QPainter over the GL surface
-        if self.selected_atoms and self._positions is not None:
+        # Draw 2D overlays (Selection rings, interactions, labels) using QPainter over the GL surface
+        if (self.selected_atoms or self.interaction_lines or self.labels or self.labeled_residues) and self._positions is not None:
             painter = QPainter(self)
             try:
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -459,30 +461,153 @@ class GLMoleculeWidget(_QOpenGLWidget):
                 
                 old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
 
-                for atom_idx in self.selected_atoms:
-                    new_idx = old_to_new.get(atom_idx, atom_idx)
-                    if new_idx >= len(self._positions):
-                        continue
+                # Helper to project 3D point to 2D screen coordinate
+                def project_point(pos_array):
+                    vec4 = QVector4D(float(pos_array[0]), float(pos_array[1]), float(pos_array[2]), 1.0)
+                    clip = mvp.map(vec4)
                     
-                    pos = self._positions[new_idx]
-                    vec = QVector3D(float(pos[0]), float(pos[1]), float(pos[2]))
-                    clip = mvp.map(vec)
-                    
-                    # Convert NDC to screen coordinates
-                    sx = (clip.x() + 1.0) * 0.5 * w
-                    sy = (1.0 - clip.y()) * 0.5 * h
-                    
-                    # Calculate radius scaling based on depth
-                    view_pos = view.map(vec)
-                    distance = view_pos.z()
-                    if distance < -0.1:
-                        # Perspective projection scales radius by roughly (h/2) / (tan(fov/2) * -z)
-                        scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -distance)
+                    if abs(clip.w()) > 1e-6:
+                        ndc_x = clip.x() / clip.w()
+                        ndc_y = clip.y() / clip.w()
+                        ndc_z = clip.z() / clip.w()
                     else:
-                        scale = 1.0
+                        ndc_x = ndc_y = ndc_z = 0.0
                         
-                    radius = self._radii[new_idx] * scale * self.sphere_scale
-                    self._draw_selection_ring(painter, sx, sy, radius)
+                    sx = (ndc_x + 1.0) * 0.5 * w
+                    sy = (1.0 - ndc_y) * 0.5 * h
+                    
+                    vec3 = QVector3D(float(pos_array[0]), float(pos_array[1]), float(pos_array[2]))
+                    view_pos = view.map(vec3)
+                    return sx, sy, view_pos.z()
+
+                # Draw Interaction Lines
+                if self.interaction_lines:
+                    for idx1, idx2, type_str, color_hex in self.interaction_lines:
+                        n1 = old_to_new.get(idx1, idx1)
+                        n2 = old_to_new.get(idx2, idx2)
+                        if n1 >= len(self._positions) or n2 >= len(self._positions):
+                            continue
+                        
+                        x1, y1, z1 = project_point(self._positions[n1])
+                        x2, y2, z2 = project_point(self._positions[n2])
+                        
+                        # Simple culling
+                        if z1 > 0 or z2 > 0: continue # Behind camera
+                        
+                        color = QColor(color_hex)
+                        pen = QPen(color, 1.5, Qt.PenStyle.DashLine)
+                        painter.setPen(pen)
+                        painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+                # Draw Selection Rings
+                if self.selected_atoms:
+                    for atom_idx in self.selected_atoms:
+                        new_idx = old_to_new.get(atom_idx, atom_idx)
+                        if new_idx >= len(self._positions):
+                            continue
+                        
+                        sx, sy, z_dist = project_point(self._positions[new_idx])
+                        if z_dist > 0: continue
+                        
+                        if z_dist < -0.1:
+                            scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -z_dist)
+                        else:
+                            scale = 1.0
+                            
+                        radius = self._radii[new_idx] * scale * self.sphere_scale
+                        self._draw_selection_ring(painter, sx, sy, radius)
+
+                # Draw Measurements based on ordered selection
+                if hasattr(self, '_selected_atoms_ordered') and len(self._selected_atoms_ordered) >= 2:
+                    font = painter.font()
+                    font.setBold(True)
+                    painter.setFont(font)
+                    painter.setPen(QPen(Qt.GlobalColor.yellow, 2, Qt.PenStyle.DashLine))
+
+                    if len(self._selected_atoms_ordered) == 2:
+                        idx1, idx2 = self._selected_atoms_ordered
+                        n1, n2 = old_to_new.get(idx1, idx1), old_to_new.get(idx2, idx2)
+                        
+                        if n1 < len(self._positions) and n2 < len(self._positions):
+                            x1, y1, z1 = project_point(self._positions[n1])
+                            x2, y2, z2 = project_point(self._positions[n2])
+                            
+                            if z1 <= 0 and z2 <= 0:
+                                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+                                
+                                # Compute actual 3D distance using buffer positions
+                                p1 = self._positions[n1]
+                                p2 = self._positions[n2]
+                                dx, dy, dz = p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]
+                                dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+                                
+                                painter.drawText(int((x1+x2)/2 + 5), int((y1+y2)/2 - 5), f"{dist:.2f} Å")
+                                
+                    elif len(self._selected_atoms_ordered) == 3:
+                        idx1, idx2, idx3 = self._selected_atoms_ordered
+                        n1, n2, n3 = old_to_new.get(idx1, idx1), old_to_new.get(idx2, idx2), old_to_new.get(idx3, idx3)
+                        
+                        if n1 < len(self._positions) and n2 < len(self._positions) and n3 < len(self._positions):
+                            x1, y1, z1 = project_point(self._positions[n1])
+                            x2, y2, z2 = project_point(self._positions[n2])
+                            x3, y3, z3 = project_point(self._positions[n3])
+                            
+                            if z1 <= 0 and z2 <= 0 and z3 <= 0:
+                                painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+                                painter.drawLine(QPointF(x2, y2), QPointF(x3, y3))
+                                
+                                # Compute actual 3D angle using buffer positions
+                                p1, p2, p3 = self._positions[n1], self._positions[n2], self._positions[n3]
+                                v1 = np.array([p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]])
+                                v2 = np.array([p3[0] - p2[0], p3[1] - p2[1], p3[2] - p2[2]])
+                                norm1, norm2 = np.linalg.norm(v1), np.linalg.norm(v2)
+                                if norm1 > 1e-6 and norm2 > 1e-6:
+                                    cos_a = np.dot(v1, v2) / (norm1 * norm2)
+                                    angle = math.degrees(math.acos(max(-1, min(1, cos_a))))
+                                    painter.drawText(int(x2 + 10), int(y2 + 10), f"{angle:.1f}°")
+                
+                # Draw Labels
+                if self.labels:
+                    from src.features.visualization_3d.services.atom_rendering import draw_label
+                    for atom_idx, text in self.labels.items():
+                        new_idx = old_to_new.get(atom_idx, atom_idx)
+                        if new_idx >= len(self._positions):
+                            continue
+                        
+                        sx, sy, z_dist = project_point(self._positions[new_idx])
+                        if z_dist > 0: continue
+                        
+                        if z_dist < -0.1:
+                            scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -z_dist)
+                        else:
+                            scale = 1.0
+                            
+                        radius = self._radii[new_idx] * scale * self.sphere_scale
+                        draw_label(painter, text, sx, sy, radius, self.label_font_size, 1.0, self.label_color)
+
+                # Draw Residue Labels
+                if self.labeled_residues and self.residue_label_settings.get('show_labels', True):
+                    from src.features.visualization_3d.services.atom_rendering import draw_residue_label
+                    for atom in self.molecule.atoms:
+                        rs = getattr(atom, 'res_seq', None)
+                        if rs is not None and rs in self.labeled_residues:
+                            if hasattr(atom, 'pdb_name') and atom.pdb_name.strip() == 'CA':
+                                new_idx = old_to_new.get(atom.index, atom.index)
+                                if new_idx >= len(self._positions):
+                                    continue
+                                
+                                sx, sy, z_dist = project_point(self._positions[new_idx])
+                                if z_dist > 0: continue
+                                
+                                if z_dist < -0.1:
+                                    scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -z_dist)
+                                else:
+                                    scale = 1.0
+                                    
+                                radius = self._radii[new_idx] * scale * self.sphere_scale
+                                res_name = getattr(atom, 'res_name', 'UNK')
+                                lbl_color = self.labeled_residues[rs]
+                                draw_residue_label(painter, f"{res_name}{rs}", sx, sy, lbl_color, radius, self.label_font_size, 1.0, self.residue_label_settings)
 
             finally:
                 painter.end()
@@ -786,6 +911,13 @@ class GLMoleculeWidget(_QOpenGLWidget):
         colors = np.zeros((n, 3), dtype=np.float32)
         radii = np.zeros(n, dtype=np.float32)
         symbols = []
+        
+        self._atom_is_backbone = np.zeros(n, dtype=bool)
+        self._atom_is_sidechain = np.zeros(n, dtype=bool)
+        self._atom_res_seqs = np.zeros(n, dtype=int)
+        
+        _AMINO_ACIDS = {'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY', 'HIS', 'ILE', 'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL'}
+        _BACKBONE_ATOMS = {'N', 'CA', 'C', 'O', 'OXT'}
 
         for i, atom in enumerate(ordered_atoms):
             if atom.has_coords:
@@ -794,6 +926,16 @@ class GLMoleculeWidget(_QOpenGLWidget):
             colors[i] = c
             radii[i] = _display_radius(atom.symbol)
             symbols.append(atom.symbol)
+            
+            rs = getattr(atom, 'res_seq', -1)
+            if rs is not None:
+                self._atom_res_seqs[i] = rs
+                
+            if i < self._ligand_start:
+                if atom.res_name in _AMINO_ACIDS and atom.pdb_name.strip() not in _BACKBONE_ATOMS:
+                    self._atom_is_sidechain[i] = True
+                elif atom.res_name in _AMINO_ACIDS:
+                    self._atom_is_backbone[i] = True
             
         # Center to origin
         if n > 0:
@@ -851,6 +993,25 @@ class GLMoleculeWidget(_QOpenGLWidget):
             self.makeCurrent()
             gl = self.context().functions()
             
+            # Calculate Atom Visibility Masks
+            active_radii = self._radii * self.sphere_scale
+            is_mesh_active = self.molecule and self.molecule.properties.get('is_protein')
+            show_all_sidechains = getattr(self, 'show_sidechains', False)
+            sidechain_res_vis = getattr(self, 'sidechain_res_vis', {})
+            visible_sidechains = getattr(self, 'visible_sidechains', set())
+            
+            if is_mesh_active and hasattr(self, '_atom_is_backbone'):
+                # Mask out all backbone atoms
+                active_radii[self._atom_is_backbone] = 0.0
+                
+                # Mask out sidechains if not shown
+                if not show_all_sidechains:
+                    for i in range(len(active_radii)):
+                        if self._atom_is_sidechain[i]:
+                            rs = self._atom_res_seqs[i]
+                            if not sidechain_res_vis.get(rs, False) and rs not in visible_sidechains:
+                                active_radii[i] = 0.0
+
             # 1. Atoms Buffer (Center, Color, Radius, Offset)
             if self._vbo_atoms: self._vbo_atoms.destroy()
             n = len(self._positions)
@@ -864,7 +1025,7 @@ class GLMoleculeWidget(_QOpenGLWidget):
                     data[i*9+3::54] = self._colors[:, 0]
                     data[i*9+4::54] = self._colors[:, 1]
                     data[i*9+5::54] = self._colors[:, 2]
-                    data[i*9+6::54] = self._radii * self.sphere_scale
+                    data[i*9+6::54] = active_radii
                 offsets = np.array([[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]], dtype=np.float32)
                 for i in range(6):
                     data[i*9+7::54] = offsets[i, 0]
@@ -919,14 +1080,45 @@ class GLMoleculeWidget(_QOpenGLWidget):
             else:
                 self._vbo_mesh = None
                 
-            # 3. Create Line VBO (Cylinder Impostors)
+            # Calculate Bond Visibility Mask
             if self._bond_starts is not None and len(self._bond_starts) > 0:
                 N_bonds = len(self._bond_starts)
                 self._num_lines = N_bonds * 6
                 
                 line_data = np.empty((N_bonds, 6, 14), dtype=np.float32)
-                starts = self._bond_starts
-                ends = self._bond_ends
+                
+                starts = self._bond_starts.copy()
+                ends = self._bond_ends.copy()
+                
+                if is_mesh_active and hasattr(self, '_bond_is_backbone'):
+                    # Create boolean mask
+                    bond_mask = np.ones(N_bonds, dtype=bool)
+                    # Hide backbone bonds
+                    if len(self._bond_is_backbone) == N_bonds:
+                        bond_mask[self._bond_is_backbone] = False
+                    
+                    if not show_all_sidechains:
+                        if not sidechain_res_vis and not visible_sidechains:
+                            bond_mask[:self._ligand_bond_start // 6] = False
+                        else:
+                            # Use vectorized masking for explicitly visible sidechains
+                            rs_array = self._bond_res_seq
+                            mask_to_hide = np.ones(N_bonds, dtype=bool)
+                            
+                            for rs in visible_sidechains:
+                                mask_to_hide[rs_array == rs] = False
+                            for rs, vis in sidechain_res_vis.items():
+                                if vis:
+                                    mask_to_hide[rs_array == rs] = False
+                            
+                            # Hide sidechain bonds whose residue is NOT visible
+                            # (we only apply this to protein bonds, i.e., before _ligand_bond_start)
+                            is_protein_bond = np.arange(N_bonds) < (self._ligand_bond_start // 6)
+                            bond_mask[mask_to_hide & (rs_array != -1) & is_protein_bond] = False
+                    
+                    starts[~bond_mask] = 0.0
+                    ends[~bond_mask] = 0.0
+                
                 colors1 = self._bond_start_colors
                 colors2 = self._bond_end_colors
                 
@@ -1039,6 +1231,9 @@ class GLMoleculeWidget(_QOpenGLWidget):
                 a, b = ring[i], ring[(i+1) % len(ring)]
                 bond_to_ring[frozenset([a, b])] = ring
                 
+        self._bond_is_backbone = []
+        self._bond_res_seq = []
+        
         for bond in bonds:
             bi = bond.begin_atom_idx
             ei = bond.end_atom_idx
@@ -1065,6 +1260,8 @@ class GLMoleculeWidget(_QOpenGLWidget):
             # Skip hydrogen bonds if hydrogens hidden
             if not self.show_hydrogens and (a1.symbol == 'H' or a2.symbol == 'H'):
                 continue
+            
+            is_backbone_bond = self._atom_is_backbone[new_bi] and self._atom_is_backbone[new_ei]
 
             p1 = self._positions[new_bi]
             p2 = self._positions[new_ei]
@@ -1131,8 +1328,20 @@ class GLMoleculeWidget(_QOpenGLWidget):
                     prot_ends.append(end_p)
                     prot_start_colors.append(atom_colors[new_bi])
                     prot_end_colors.append(atom_colors[new_ei])
+                    self._bond_is_backbone.append(is_backbone_bond)
+                    
+                    rs = getattr(a1, 'res_seq', -1)
+                    if rs == -1:
+                        rs = getattr(a2, 'res_seq', -1)
+                    self._bond_res_seq.append(rs)
 
         self._ligand_bond_start = len(prot_starts) * 6
+        
+        self._bond_is_backbone.extend([False] * len(lig_starts))
+        self._bond_is_backbone = np.array(self._bond_is_backbone, dtype=bool)
+        
+        self._bond_res_seq.extend([-1] * len(lig_starts))
+        self._bond_res_seq = np.array(self._bond_res_seq, dtype=int)
 
         starts = prot_starts + lig_starts
         ends = prot_ends + lig_ends
@@ -1187,6 +1396,55 @@ class GLMoleculeWidget(_QOpenGLWidget):
             self._auto_fit()
         self.update()
 
+    def focus_on_atoms(self, atom_indices, padding_angstroms=0.0):
+        """Center the view on the given atoms and zoom in."""
+        if self._positions is None or len(self._positions) == 0 or not atom_indices:
+            return
+
+        old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
+        
+        coords = []
+        for idx in atom_indices:
+            new_idx = old_to_new.get(idx, idx)
+            if new_idx < len(self._positions):
+                coords.append(self._positions[new_idx])
+
+        if not coords:
+            return
+
+        coords = np.array(coords)
+        centroid = np.mean(coords, axis=0)
+        span = np.max(coords, axis=0) - np.min(coords, axis=0)
+        max_span = max(float(np.max(span)), 1.0)
+        
+        max_span += 2.0 * padding_angstroms
+
+        viewport_size = min(self.width(), self.height())
+        if viewport_size < 10:
+            viewport_size = 400
+            
+        self.zoom = min(100.0, max(15.0, viewport_size * 0.4 / max_span))
+
+        cos_x = math.cos(math.radians(self.rot_x))
+        sin_x = math.sin(math.radians(self.rot_x))
+        cos_y = math.cos(math.radians(self.rot_y))
+        sin_y = math.sin(math.radians(self.rot_y))
+        cos_z = math.cos(math.radians(self.rot_z))
+        sin_z = math.sin(math.radians(self.rot_z))
+
+        x, y, z = centroid[0], centroid[1], centroid[2]
+        x1 = x * cos_y + z * sin_y
+        z1 = -x * sin_y + z * cos_y
+        y1 = y * cos_x - z1 * sin_x
+        
+        x2 = x1 * cos_z - y1 * sin_z
+        y2 = x1 * sin_z + y1 * cos_z
+
+        self.pan_x = -x2 * self.zoom
+        self.pan_y = y2 * self.zoom
+
+        self.update()
+
     # ------------------------------------------------------------------
     #  Mouse interaction
     # ------------------------------------------------------------------
@@ -1194,6 +1452,7 @@ class GLMoleculeWidget(_QOpenGLWidget):
     def mousePressEvent(self, event):
         self._last_mouse_pos = event.position()
         self._mouse_button = event.button()
+        self._mouse_moved = False
 
     def mouseMoveEvent(self, event):
         if self._last_mouse_pos is None:
@@ -1201,6 +1460,9 @@ class GLMoleculeWidget(_QOpenGLWidget):
 
         dx = event.position().x() - self._last_mouse_pos.x()
         dy = event.position().y() - self._last_mouse_pos.y()
+        
+        if abs(dx) > 2 or abs(dy) > 2:
+            self._mouse_moved = True
 
         if self._mouse_button == Qt.MouseButton.LeftButton:
             self.rot_y += dx * 0.5
@@ -1222,14 +1484,193 @@ class GLMoleculeWidget(_QOpenGLWidget):
         self.update()
 
     def mouseReleaseEvent(self, event):
+        if not getattr(self, '_mouse_moved', False) and self._mouse_button == Qt.MouseButton.LeftButton:
+            self._handle_click(event.position())
         self._last_mouse_pos = None
         self._mouse_button = None
+        self._mouse_moved = False
+
+    def _handle_click(self, pos):
+        from src.shared.qt_compat import QApplication
+        modifiers = QApplication.keyboardModifiers()
+        
+        atom_idx = self._hit_test(pos)
+        if atom_idx != -1:
+            if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                if atom_idx in self.selected_atoms:
+                    self.selected_atoms.remove(atom_idx)
+                    if hasattr(self, '_selected_atoms_ordered') and atom_idx in self._selected_atoms_ordered:
+                        self._selected_atoms_ordered.remove(atom_idx)
+                else:
+                    self.selected_atoms.add(atom_idx)
+                    if not hasattr(self, '_selected_atoms_ordered'):
+                        self._selected_atoms_ordered = []
+                    self._selected_atoms_ordered.append(atom_idx)
+            else:
+                self.selected_atoms = {atom_idx}
+                if not hasattr(self, '_selected_atoms_ordered'):
+                    self._selected_atoms_ordered = []
+                self._selected_atoms_ordered.append(atom_idx)
+                if len(self._selected_atoms_ordered) > 3:
+                    self._selected_atoms_ordered.pop(0)
+            self.selection_changed.emit(set(self.selected_atoms))
+            self.atom_clicked.emit(atom_idx)
+        else:
+            self.selected_atoms.clear()
+            self._selected_atoms_ordered = []
+            self.selection_changed.emit(set())
+            
+        self.update()
+
+    def _hit_test(self, pos):
+        if self._positions is None or len(self._positions) == 0:
+            return -1
+
+        w = self.width()
+        h = self.height()
+        proj = self._get_projection_matrix()
+        view = self._get_view_matrix()
+        mvp = proj * view
+        
+        click_x = pos.x()
+        click_y = pos.y()
+        
+        closest_idx = -1
+        min_dist_sq = float('inf')
+        closest_z = float('inf')
+        
+        old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
+        new_to_old = {v: k for k, v in old_to_new.items()}
+        
+        for i in range(len(self._positions)):
+            vec = QVector3D(float(self._positions[i][0]), float(self._positions[i][1]), float(self._positions[i][2]))
+            clip = mvp.map(vec)
+            
+            # Behind camera
+            view_pos = view.map(vec)
+            if view_pos.z() > 0:
+                continue
+                
+            sx = (clip.x() + 1.0) * 0.5 * w
+            sy = (1.0 - clip.y()) * 0.5 * h
+            
+            dx = sx - click_x
+            dy = sy - click_y
+            dist_sq = dx*dx + dy*dy
+            
+            # Determine radius to see if it's a hit
+            if view_pos.z() < -0.1:
+                scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -view_pos.z())
+            else:
+                scale = 1.0
+            radius = self._radii[i] * scale * self.sphere_scale
+            hit_radius_sq = (max(10, radius * 1.5)) ** 2
+            
+            if dist_sq <= hit_radius_sq:
+                if view_pos.z() < closest_z:
+                    closest_z = view_pos.z()
+                    closest_idx = new_to_old.get(i, i)
+                    min_dist_sq = dist_sq
+                    
+        return closest_idx
 
     def wheelEvent(self, event: QWheelEvent):
         delta = event.angleDelta().y()
         factor = 1.1 if delta > 0 else 0.9
         self.zoom *= factor
         self.zoom = max(5.0, min(200.0, self.zoom))
+        self.update()
+
+    def contextMenuEvent(self, event):
+        """Show context menu for selected atoms/residues and general viewer options."""
+        from src.shared.qt_compat import QMenu
+        menu = QMenu(self)
+
+        selected_res_seqs = set()
+        bs_action, wf_action, sf_action = None, None, None
+        show_sc_action, hide_sc_action = None, None
+        label_res_action, clear_label_action = None, None
+
+        if self.selected_atoms:
+            # Styles
+            style_menu = menu.addMenu("Set Style")
+            bs_action = style_menu.addAction("Ball and Stick")
+            wf_action = style_menu.addAction("Wireframe")
+            sf_action = style_menu.addAction("Space Fill")
+
+            # Determine if selected contains residues
+            if self.molecule:
+                for idx in self.selected_atoms:
+                    atom = self.molecule.atoms[idx]
+                    rs = getattr(atom, 'res_seq', None)
+                    if rs is not None:
+                        selected_res_seqs.add(rs)
+
+            if selected_res_seqs:
+                sidechain_menu = menu.addMenu("Side Chains")
+                show_sc_action = sidechain_menu.addAction("Show")
+                hide_sc_action = sidechain_menu.addAction("Hide")
+
+                # Label action
+                label_res_action = menu.addAction("Label Residue Color...")
+                clear_label_action = menu.addAction("Clear Residue Label")
+
+            menu.addSeparator()
+
+        action = menu.exec(event.globalPos())
+        if not action:
+            return
+
+        if not hasattr(self, 'custom_atom_modes'):
+            self.custom_atom_modes = {}
+        if not hasattr(self, 'sidechain_res_vis'):
+            self.sidechain_res_vis = {}
+
+        if bs_action and action == bs_action:
+            for idx in self.selected_atoms:
+                self.custom_atom_modes[idx] = 'ball_and_stick'
+            self.update()
+        elif wf_action and action == wf_action:
+            for idx in self.selected_atoms:
+                self.custom_atom_modes[idx] = 'wireframe'
+            self.update()
+        elif sf_action and action == sf_action:
+            for idx in self.selected_atoms:
+                self.custom_atom_modes[idx] = 'spacefill'
+            self.update()
+        elif show_sc_action and action == show_sc_action:
+            for rs in selected_res_seqs:
+                self.sidechain_res_vis[rs] = True
+            if self.gl_available: self._update_gl_buffers()
+            self.update()
+        elif hide_sc_action and action == hide_sc_action:
+            for rs in selected_res_seqs:
+                self.sidechain_res_vis[rs] = False
+            if self.gl_available: self._update_gl_buffers()
+            self.update()
+        elif label_res_action and action == label_res_action:
+            from PySide6.QtWidgets import QColorDialog
+            color = QColorDialog.getColor(Qt.white, self, "Select Residue Label Color")
+            if color.isValid():
+                for rs in selected_res_seqs:
+                    self.labeled_residues[rs] = color
+                self.update()
+        elif clear_label_action and action == clear_label_action:
+            for rs in selected_res_seqs:
+                if rs in self.labeled_residues:
+                    del self.labeled_residues[rs]
+            self.update()
+
+    @property
+    def show_sidechains(self): return getattr(self, '_show_sidechains', False)
+    
+    @show_sidechains.setter
+    def show_sidechains(self, val):
+        if getattr(self, '_show_sidechains', None) == val:
+            return
+        self._show_sidechains = val
+        if self.gl_available:
+            self._update_gl_buffers()
         self.update()
 
     # ------------------------------------------------------------------

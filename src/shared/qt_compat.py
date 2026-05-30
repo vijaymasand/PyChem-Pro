@@ -25,7 +25,7 @@ try:
         QGraphicsItem, QToolBar, QDialogButtonBox, QStackedWidget
     )
     from PySide6.QtCore import Qt, QThread, Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop, QUrl
-    from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform, QVector3D, QMatrix4x4
+    from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform, QVector3D, QVector4D, QMatrix4x4
     try:
         from PySide6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, QOpenGLVertexArrayObject
     except ImportError:
@@ -56,7 +56,7 @@ except ImportError as e:
             QGraphicsItem, QToolBar, QDialogButtonBox, QStackedWidget
         )
         from PyQt6.QtCore import Qt, QThread, pyqtSignal as Signal, QObject, QSettings, QTimer, QPointF, QRect, QRectF, QCoreApplication, QStandardPaths, QSize, QEventLoop, QUrl
-        from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform, QVector3D, QMatrix4x4
+        from PyQt6.QtGui import QAction, QActionGroup, QKeySequence, QFont, QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QFontMetrics, QFontMetricsF, QWheelEvent, QRadialGradient, QLinearGradient, QImage, QConicalGradient, QPainterPath, QPolygonF, QTextCursor, QPaintEvent, QPalette, QTransform, QVector3D, QVector4D, QMatrix4x4
         try:
             from PyQt6.QtOpenGL import QOpenGLShaderProgram, QOpenGLShader, QOpenGLBuffer, QOpenGLVertexArrayObject
         except ImportError:

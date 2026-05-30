@@ -601,18 +601,25 @@ class MolViewer3D(QWidget):
         # Connect signals
         self.software_viewer.atom_hovered.connect(self.atom_hovered.emit)
         self.software_viewer.atom_clicked.connect(self.atom_clicked.emit)
-        self.software_viewer.selection_changed.connect(self.selection_changed.emit)
+        self.software_viewer.selection_changed.connect(self._sync_selection)
         self.software_viewer.delete_requested.connect(self.delete_requested.emit)
         
         self.gl_viewer.atom_hovered.connect(self.atom_hovered.emit)
         self.gl_viewer.atom_clicked.connect(self.atom_clicked.emit)
-        self.gl_viewer.selection_changed.connect(self.selection_changed.emit)
+        self.gl_viewer.selection_changed.connect(self._sync_selection)
         self.gl_viewer.delete_requested.connect(self.delete_requested.emit)
         
         # Current active viewer
         self.active_viewer = self.software_viewer
         self.stacked.setCurrentWidget(self.software_viewer)
-        
+
+    def _sync_selection(self, selected):
+        """Ensure both GL and Software viewers stay in sync when selection changes."""
+        self.software_viewer.selected_atoms = set(selected)
+        if hasattr(self.gl_viewer, 'selected_atoms'):
+            self.gl_viewer.selected_atoms = set(selected)
+        self.selection_changed.emit(set(selected))
+
     @property
     def molecule(self):
         return self.active_viewer.molecule
@@ -789,6 +796,86 @@ class MolViewer3D(QWidget):
         self.software_viewer.bg_color = val
         self.gl_viewer.bg_color = val
 
+    @property
+    def show_ligands_in_cartoon(self): return getattr(self.software_viewer, 'show_ligands_in_cartoon', False)
+    @show_ligands_in_cartoon.setter
+    def show_ligands_in_cartoon(self, val):
+        self.software_viewer.show_ligands_in_cartoon = val
+        if hasattr(self.gl_viewer, 'show_ligands_in_cartoon'):
+            self.gl_viewer.show_ligands_in_cartoon = val
+
+    @property
+    def visible_sidechains(self): 
+        v = getattr(self.software_viewer, 'visible_sidechains', set())
+        if hasattr(self.gl_viewer, 'visible_sidechains') and self.gl_viewer.visible_sidechains is not v:
+            self.gl_viewer.visible_sidechains = v
+        return v
+    @visible_sidechains.setter
+    def visible_sidechains(self, val):
+        self.software_viewer.visible_sidechains = val
+        if hasattr(self.gl_viewer, 'visible_sidechains'):
+            self.gl_viewer.visible_sidechains = val
+
+    @property
+    def interaction_lines(self): 
+        v = getattr(self.software_viewer, 'interaction_lines', [])
+        if hasattr(self.gl_viewer, 'interaction_lines') and self.gl_viewer.interaction_lines is not v:
+            self.gl_viewer.interaction_lines = v
+        return v
+    @interaction_lines.setter
+    def interaction_lines(self, val):
+        self.software_viewer.interaction_lines = val
+        if hasattr(self.gl_viewer, 'interaction_lines'):
+            self.gl_viewer.interaction_lines = val
+
+    @property
+    def custom_atom_modes(self): 
+        v = getattr(self.software_viewer, 'custom_atom_modes', {})
+        if hasattr(self.gl_viewer, 'custom_atom_modes') and self.gl_viewer.custom_atom_modes is not v:
+            self.gl_viewer.custom_atom_modes = v
+        return v
+    @custom_atom_modes.setter
+    def custom_atom_modes(self, val):
+        self.software_viewer.custom_atom_modes = val
+        if hasattr(self.gl_viewer, 'custom_atom_modes'):
+            self.gl_viewer.custom_atom_modes = val
+
+    @property
+    def labels(self): 
+        v = getattr(self.software_viewer, 'labels', {})
+        if hasattr(self.gl_viewer, 'labels') and self.gl_viewer.labels is not v:
+            self.gl_viewer.labels = v
+        return v
+    @labels.setter
+    def labels(self, val):
+        self.software_viewer.labels = val
+        if hasattr(self.gl_viewer, 'labels'):
+            self.gl_viewer.labels = val
+
+    @property
+    def labeled_residues(self): 
+        v = getattr(self.software_viewer, 'labeled_residues', {})
+        if hasattr(self.gl_viewer, 'labeled_residues') and self.gl_viewer.labeled_residues is not v:
+            self.gl_viewer.labeled_residues = v
+        return v
+    @labeled_residues.setter
+    def labeled_residues(self, val):
+        self.software_viewer.labeled_residues = val
+        if hasattr(self.gl_viewer, 'labeled_residues'):
+            self.gl_viewer.labeled_residues = val
+
+    @property
+    def residue_label_settings(self): 
+        v = getattr(self.software_viewer, 'residue_label_settings', {})
+        if hasattr(self.gl_viewer, 'residue_label_settings') and self.gl_viewer.residue_label_settings is not v:
+            self.gl_viewer.residue_label_settings = v
+        return v
+    @residue_label_settings.setter
+    def residue_label_settings(self, val):
+        self.software_viewer.residue_label_settings = val
+        if hasattr(self.gl_viewer, 'residue_label_settings'):
+            self.gl_viewer.residue_label_settings = val
+
     # Method delegation
     def set_molecule(self, molecule):
         # Decide which viewer to use
@@ -860,7 +947,10 @@ class MolViewer3D(QWidget):
         if self.active_viewer == self.software_viewer:
             self.software_viewer.focus_on_atoms(atom_indices, padding_angstroms)
         else:
-            self.gl_viewer._auto_fit()  # Fallback for GL
+            if hasattr(self.gl_viewer, 'focus_on_atoms'):
+                self.gl_viewer.focus_on_atoms(atom_indices, padding_angstroms)
+            else:
+                self.gl_viewer._auto_fit()
 
     def export_image(self, filepath, dpi=300, bg_white=True):
         if self.active_viewer == self.software_viewer:
