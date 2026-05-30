@@ -50,7 +50,7 @@ def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None, them
     Utilizes 50% of available CPU cores.
     """
     import os
-    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor
     from src.features.visualization_3d.services.vectorized_mesh_builder import generate_chain_mesh_vectorized
 
     # Auto-select LOD if not specified
@@ -72,20 +72,20 @@ def generate_cartoon_mesh(molecule, spline_steps=None, profile_detail=None, them
     if not chains_data:
         return None, None, None
 
-    # 2. Multiprocessing Orchestration for CPU-bound mesh generation
-    # Use ProcessPoolExecutor for true parallelism on CPU-bound tasks
-    # This avoids GIL limitations and provides better performance on multi-core systems
-    from concurrent.futures import ProcessPoolExecutor
+    # 2. Multithreading Orchestration for mesh generation
+    # Use ThreadPoolExecutor to avoid massive process spawning overhead on Windows
+    # while still allowing C-level numpy operations to release the GIL.
+    from concurrent.futures import ThreadPoolExecutor
     
     # Sort chain IDs for consistent results
     sorted_chain_ids = sorted(chains_data.keys())
     chains_to_process = [chains_data[cid] for cid in sorted_chain_ids]
 
     results = []
-    # Use ProcessPoolExecutor for CPU-bound mesh generation
+    # Use ThreadPoolExecutor for mesh generation
     # Use 50% of CPU cores to avoid overwhelming the system
     num_workers = max(1, (os.cpu_count() or 4) // 2)
-    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
         futures = [
             executor.submit(generate_chain_mesh_vectorized, chain, spline_steps, profile_detail, theme_colors)
             for chain in chains_to_process
