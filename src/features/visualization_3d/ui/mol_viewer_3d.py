@@ -153,6 +153,11 @@ class SoftwareMolViewer3D(QWidget):
         self.custom_atom_colors = {}
         self.labels = {}  # Clear custom labels when loading new molecule
         if molecule and len(molecule.atoms) > 0:
+            # Compute centroid to perfectly align ligands and protein mesh
+            positions = [ (a.x, a.y, a.z) for a in molecule.atoms if a.has_coords ]
+            if positions:
+                self._centroid = np.mean(positions, axis=0)
+            
             self._auto_fit()
             # Auto-switch to cartoon for proteins, reset for small molecules
             is_protein = getattr(molecule, 'properties', {}).get('is_protein', False)
@@ -256,7 +261,7 @@ class SoftwareMolViewer3D(QWidget):
 
     # ─── Image Export ─────────────────────────────────────────────
 
-    def export_image(self, filepath, dpi=300, bg_white=True):
+    def export_image(self, filepath, dpi=300, bg_white=True, override_size=None):
         """
         Export the current view as a high-resolution image.
 
@@ -264,14 +269,16 @@ class SoftwareMolViewer3D(QWidget):
             filepath: Output file path (.png, .jpg, .tiff, .bmp)
             dpi: Resolution in dots per inch (72, 150, 300, 600, etc.)
             bg_white: If True, use white background instead of dark
+            override_size: Optional (width, height) tuple to override widget size
 
         Returns:
             True if successful
         """
         # Calculate pixel dimensions from current widget size and DPI
         scale_factor = dpi / 96.0  # 96 DPI is the default screen DPI
-        img_width = int(self.width() * scale_factor)
-        img_height = int(self.height() * scale_factor)
+        w, h = override_size if override_size else (self.width(), self.height())
+        img_width = int(w * scale_factor)
+        img_height = int(h * scale_factor)
 
         # Create high-res image
         image = QImage(img_width, img_height, QImage.Format.Format_ARGB32_Premultiplied)
@@ -965,7 +972,9 @@ class MolViewer3D(QWidget):
                 self.software_viewer.pan_x = self.gl_viewer.pan_x
                 self.software_viewer.pan_y = self.gl_viewer.pan_y
                 self.software_viewer.zoom = self.gl_viewer.zoom
-                return self.software_viewer.export_image(filepath, dpi, bg_white)
+                if hasattr(self.gl_viewer, '_centroid'):
+                    self.software_viewer._centroid = self.gl_viewer._centroid
+                return self.software_viewer.export_image(filepath, dpi, bg_white, override_size=(self.gl_viewer.width(), self.gl_viewer.height()))
             else:
                 # GL fallback - fast screen capture
                 return self.gl_viewer.grabFramebuffer().save(filepath)
