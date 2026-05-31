@@ -606,7 +606,8 @@ def copy_as_image(window):
         
         # Copy to clipboard
         clipboard = QApplication.clipboard()
-        clipboard.setImage(image)
+        # Convert to RGB32 to strip alpha channel so it pastes correctly into MS Word
+        clipboard.setImage(image.convertToFormat(QImage.Format.Format_RGB32))
         
         # Show success message
         sel_text = " (selection)" if selection_only and (has_sel_2d or has_sel_3d) else ""

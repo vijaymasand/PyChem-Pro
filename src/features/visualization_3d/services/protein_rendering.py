@@ -514,7 +514,8 @@ def render_protein_cartoon(painter, molecule: Molecule,
                           color_scheme: str = "secondary_structure",
                           use_ssao: bool = False,
                           use_gouraud: bool = False,
-                          is_interacting: bool = False):
+                          is_interacting: bool = False,
+                          centroid=None):
     """
     Render protein cartoon using the CPPCartoon-faithful mesh generator.
     
@@ -566,7 +567,10 @@ def render_protein_cartoon(painter, molecule: Molecule,
 
     t0_transform = time.time()
     # 2. Apply camera transformations (match MolViewer3D order: Ry then Rx then Rz)
-    v_centered = vertices # Do NOT shift by center, align with raw atom coordinates
+    if centroid is not None:
+        v_centered = vertices - centroid
+    else:
+        v_centered = vertices - np.mean(vertices, axis=0)
     
     # Apply rotation
     from math import sin, cos, radians

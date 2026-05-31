@@ -874,7 +874,8 @@ class PainterRenderer:
                     color_scheme="secondary_structure",
                     use_ssao=getattr(v, 'use_ssao', False),
                     use_gouraud=getattr(v, 'use_gouraud', False),
-                    is_interacting=getattr(v, '_is_interacting', False)
+                    is_interacting=getattr(v, '_is_interacting', False),
+                    centroid=getattr(v, '_centroid', None)
                 )
             elif v.render_mode == 'ribbon':
                 mesh_data = render_protein_ribbon(
