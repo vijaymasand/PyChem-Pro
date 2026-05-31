@@ -8,6 +8,7 @@
 > A pure-Python desktop application and library for chemistry and cheminformatics — molecular visualization, SMILES parsing, PDB loading, MMFF94 geometry optimization, descriptors, and a plugin ecosystem. No RDKit. No OpenBabel. Everything implemented from scratch.
 
 **Repository:** https://github.com/vijaymasand/PyChem-Pro
+**Website:** https://sites.google.com/view/pydescriptorcstar/pychem-pro
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/vijaymasand)
 
