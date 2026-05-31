@@ -1390,6 +1390,12 @@ class PainterRenderer:
                 continue
 
             x, y, z = sphere.position
+            
+            if hasattr(v, '_centroid') and v._centroid is not None:
+                x -= v._centroid[0]
+                y -= v._centroid[1]
+                z -= v._centroid[2]
+                
             x1 = x * cos_y + z * sin_y
             z1 = -x * sin_y + z * cos_y
             y1 = y * cos_x - z1 * sin_x
@@ -1401,6 +1407,12 @@ class PainterRenderer:
 
         for sphere, sz in sorted_spheres:
             x, y, z = sphere.position
+            
+            if hasattr(v, '_centroid') and v._centroid is not None:
+                x -= v._centroid[0]
+                y -= v._centroid[1]
+                z -= v._centroid[2]
+                
             radius = sphere.radius
             alpha = getattr(sphere, 'alpha', 1.0)
 
