@@ -212,6 +212,30 @@ class GLMoleculeWidget(_QOpenGLWidget):
         self._gl_version_string = ''
         self._gl_renderer_string = ''
 
+        self.setMinimumSize(400, 400)
+        self.setMouseTracking(True)
+
+        # Request OpenGL 3.3 Core Profile (portable across all platforms)
+        try:
+            from PySide6.QtGui import QSurfaceFormat
+            fmt = QSurfaceFormat()
+            fmt.setVersion(3, 3)
+            fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+            fmt.setDepthBufferSize(24)
+            fmt.setSamples(8)  # Increased multi-sampling for smoother edges
+            self.setFormat(fmt)
+        except Exception:
+            try:
+                from PyQt6.QtGui import QSurfaceFormat
+                fmt = QSurfaceFormat()
+                fmt.setVersion(3, 3)
+                fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
+                fmt.setDepthBufferSize(24)
+                fmt.setSamples(8)
+                self.setFormat(fmt)
+            except Exception:
+                pass  # Format request is best-effort
+
     @property
     def show_hydrogens(self):
         return getattr(self, '_show_hydrogens', True)
@@ -254,30 +278,6 @@ class GLMoleculeWidget(_QOpenGLWidget):
         if self._line_scale != value:
             self._line_scale = value
             self.update()
-
-        self.setMinimumSize(400, 400)
-        self.setMouseTracking(True)
-
-        # Request OpenGL 3.3 Core Profile (portable across all platforms)
-        try:
-            from PySide6.QtGui import QSurfaceFormat
-            fmt = QSurfaceFormat()
-            fmt.setVersion(3, 3)
-            fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
-            fmt.setDepthBufferSize(24)
-            fmt.setSamples(4)
-            self.setFormat(fmt)
-        except Exception:
-            try:
-                from PyQt6.QtGui import QSurfaceFormat
-                fmt = QSurfaceFormat()
-                fmt.setVersion(3, 3)
-                fmt.setProfile(QSurfaceFormat.OpenGLContextProfile.CoreProfile)
-                fmt.setDepthBufferSize(24)
-                fmt.setSamples(4)
-                self.setFormat(fmt)
-            except Exception:
-                pass  # Format request is best-effort
 
     # ------------------------------------------------------------------
     #  OpenGL lifecycle

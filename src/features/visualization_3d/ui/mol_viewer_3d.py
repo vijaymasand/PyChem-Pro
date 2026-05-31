@@ -952,12 +952,23 @@ class MolViewer3D(QWidget):
             else:
                 self.gl_viewer._auto_fit()
 
-    def export_image(self, filepath, dpi=300, bg_white=True):
+    def export_image(self, filepath, dpi=300, bg_white=True, high_quality=False):
         if self.active_viewer == self.software_viewer:
             return self.software_viewer.export_image(filepath, dpi, bg_white)
         else:
-            # GL fallback
-            return self.gl_viewer.grabGeometry().save(filepath)
+            if high_quality:
+                # Use QPainter software rendering for "Ray (slow)" high-quality export
+                # Sync camera and settings to software viewer before rendering
+                self.software_viewer.rot_x = self.gl_viewer.rot_x
+                self.software_viewer.rot_y = self.gl_viewer.rot_y
+                self.software_viewer.rot_z = self.gl_viewer.rot_z
+                self.software_viewer.pan_x = self.gl_viewer.pan_x
+                self.software_viewer.pan_y = self.gl_viewer.pan_y
+                self.software_viewer.zoom = self.gl_viewer.zoom
+                return self.software_viewer.export_image(filepath, dpi, bg_white)
+            else:
+                # GL fallback - fast screen capture
+                return self.gl_viewer.grabFramebuffer().save(filepath)
 
     def _render(self, painter, width, height, is_export=False, export_scale=1.0):
         """Delegate rendering to the active viewer. Used for printing and high-res export."""

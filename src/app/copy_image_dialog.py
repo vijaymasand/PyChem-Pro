@@ -86,6 +86,12 @@ class CopyImageDialog(QDialog):
         self._selection_only_check.setEnabled(self._has_selection_2d or self._has_selection_3d)
         layout.addWidget(self._selection_only_check)
         
+        # High Quality / Ray Tracing option
+        self._hq_check = QCheckBox("Ray (slow) - High Anti-Aliasing (3D view only)")
+        self._hq_check.setChecked(True)
+        self._hq_check.setEnabled(self._has_selection_3d or True) # Always enable since they can select 3D view
+        layout.addWidget(self._hq_check)
+        
         # Status label
         self._status_label = QLabel()
         self._status_label.setStyleSheet("color: gray; font-size: 11px;")
@@ -138,5 +144,6 @@ class CopyImageDialog(QDialog):
             "source": source,
             "format": self.FORMATS[self._format_combo.currentText()],
             "dpi": self._dpi_spin.value(),
-            "selection_only": self._selection_only_check.isChecked()
+            "selection_only": self._selection_only_check.isChecked(),
+            "high_quality": self._hq_check.isChecked()
         }
