@@ -579,6 +579,7 @@ def copy_as_image(window):
     fmt = settings["format"]
     dpi = settings["dpi"]
     selection_only = settings["selection_only"]
+    high_quality = settings.get("high_quality", False)
     
     try:
         # Calculate scale factor based on DPI (96 is standard screen DPI)
@@ -586,14 +587,14 @@ def copy_as_image(window):
         
         if source == "2d":
             image = _render_viewer_to_image(
-                window.viewer_2d, scale_factor, selection_only, fmt
+                window.viewer_2d, scale_factor, selection_only, fmt, high_quality=False
             )
         elif source == "3d":
             image = _render_viewer_to_image(
-                window.viewer_3d, scale_factor, selection_only, fmt
+                window.viewer_3d, scale_factor, selection_only, fmt, high_quality=high_quality
             )
         else:  # both
-            image = _render_both_viewers(window, scale_factor, selection_only, fmt)
+            image = _render_both_viewers(window, scale_factor, selection_only, fmt, high_quality=high_quality)
         
         if image is None:
             QMessageBox.warning(window, "Copy as Image", "Failed to render image.")
@@ -617,7 +618,7 @@ def copy_as_image(window):
         QMessageBox.critical(window, "Copy as Image Error", str(e))
 
 
-def _render_viewer_to_image(viewer, scale_factor, selection_only, fmt):
+def _render_viewer_to_image(viewer, scale_factor, selection_only, fmt, high_quality=False):
     """
     Render a single viewer (2D or 3D) to a QImage.
     
@@ -683,7 +684,15 @@ def _render_viewer_to_image(viewer, scale_factor, selection_only, fmt):
         # Use viewer's export to get full image
         dpi = int(96 * scale_factor)
         # print(f"[DEBUG CopyImage] Exporting to {temp_path} at dpi={dpi}")  # Commented out for reduced verbosity
-        success = viewer.export_image(temp_path, dpi=dpi, bg_white=True)
+        if hasattr(viewer, 'export_image'):
+            import inspect
+            sig = inspect.signature(viewer.export_image)
+            if 'high_quality' in sig.parameters:
+                success = viewer.export_image(temp_path, dpi=dpi, bg_white=True, high_quality=high_quality)
+            else:
+                success = viewer.export_image(temp_path, dpi=dpi, bg_white=True)
+        else:
+            success = False
         # print(f"[DEBUG CopyImage] Export success: {success}")  # Commented out for reduced verbosity
         if not success:
             return None
@@ -729,7 +738,7 @@ def _render_viewer_to_image(viewer, scale_factor, selection_only, fmt):
             pass
 
 
-def _render_both_viewers(window, scale_factor, selection_only, fmt):
+def _render_both_viewers(window, scale_factor, selection_only, fmt, high_quality=False):
     """
     Render both 2D and 3D viewers side by side.
     
@@ -759,12 +768,12 @@ def _render_both_viewers(window, scale_factor, selection_only, fmt):
     
     try:
         # Render 2D on left
-        img_2d = _render_viewer_to_image(v2d, scale_factor, selection_only, fmt)
+        img_2d = _render_viewer_to_image(v2d, scale_factor, selection_only, fmt, high_quality=False)
         if img_2d:
             painter.drawImage(0, 0, img_2d)
         
         # Render 3D on right
-        img_3d = _render_viewer_to_image(v3d, scale_factor, selection_only, fmt)
+        img_3d = _render_viewer_to_image(v3d, scale_factor, selection_only, fmt, high_quality=high_quality)
         if img_3d:
             x_offset = int(img_w * 0.5)
             painter.drawImage(x_offset, 0, img_3d)
