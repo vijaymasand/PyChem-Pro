@@ -6,4 +6,5 @@ psutil>=5.9
 pillow>=10.0
 scipy>=1.10
 scikit-learn>=1.3
-rdkit>=2023.3
+# Optional dependencies (used by specific plugins)
+# rdkit>=2023.3 (Completely optional, as it is required for only one plugin. PyChem-Pro runs without RdKIT)
