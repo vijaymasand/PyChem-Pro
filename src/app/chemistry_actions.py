@@ -116,13 +116,8 @@ def open_descriptor_calculator(window):
         print(f"[DEBUG] Opening descriptor calculator...")
         print(f"[DEBUG] Molecule available: {window.molecule is not None}")
 
-    if not window.molecule:
-        QMessageBox.warning(window, "No Molecule",
-                            "Please load a molecule first before calculating descriptors.")
-        return
-
     try:
-        if _DEBUG:
+        if _DEBUG and window.molecule:
             print(f"[DEBUG] Molecule atoms: {len(window.molecule.atoms)}, bonds: {len(window.molecule.bonds)}")
 
             if hasattr(window.molecule.atoms[0], 'x'):
@@ -145,10 +140,6 @@ def open_descriptor_calculator(window):
             return
 
         window.descriptor_calculator_dialog = dialog
-
-        print(f"[DEBUG] Dialog stored as instance variable")
-        print(f"[DEBUG] Descriptor calculator should now be visible")
-
     except ImportError as e:
         print(f"[DEBUG] Import Error: {e}")
         QMessageBox.critical(window, "Import Error",
