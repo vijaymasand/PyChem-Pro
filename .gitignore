@@ -2,8 +2,6 @@
 docs/
 testing/
 tests/
-chemcanvas-main/
-Prompts.txt
 *.bat
 *.mol2
 *.pdb
@@ -11,18 +9,13 @@ Prompts.txt
 __pycache__/
 *.sdf
 graphify-out/
-
 .DS_Store
 .graphifyignore
-Claude.md
-.claude
-
 dist/
 build/
 *.build/
 *.dist/
 *.onefile-build/
-
 venv/
 .venv/
 env/
