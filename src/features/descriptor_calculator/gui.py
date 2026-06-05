@@ -11,7 +11,6 @@ import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-# Use Qt compatibility layer
 from src.shared.qt_compat import *
 
 # Only define GUI classes if Qt framework is available
@@ -19,6 +18,7 @@ if QT_FRAMEWORK is not None:
 
     from ..cheminformatics.services.atom_properties import AtomPropertyAnalyzer
     from .descriptor_engine import DescriptorEngine
+    from .pydes.engine import PyDesEngine
     from .descriptor_types import (
         DescriptorCategory, DescriptorInfo, DescriptorResult,
         CalculationProgress, AtomSelection, SelectionType
@@ -32,24 +32,17 @@ if QT_FRAMEWORK is not None:
         calculation_finished = Signal(dict)
         error_occurred = Signal(str)
         
-        def __init__(self, engine, molecule, selection, categories):
+        def __init__(self, molecules, n_jobs=-1):
             super().__init__()
-            self.engine = engine
-            self.molecule = molecule
-            self.selection = selection
-            self.categories = categories
+            self.molecules = molecules if isinstance(molecules, list) else [molecules]
+            self.n_jobs = n_jobs
         
         def run(self):
             try:
-                # Set progress callback
-                self.engine.set_progress_callback(self.progress_updated.emit)
-                
-                # Calculate descriptors
-                results = self.engine.calculate_descriptors(
-                    self.molecule, self.selection, self.categories
-                )
-                
-                self.calculation_finished.emit(results)
+                # Use the new PyDesEngine for batch calculation
+                results_list = PyDesEngine.calculate_batch(self.molecules, n_jobs=self.n_jobs)
+                # For UI display, we'll just emit the first result if there's only one, or a summary
+                self.calculation_finished.emit({'batch_results': results_list})
                 
             except Exception as e:
                 self.error_occurred.emit(str(e))
@@ -273,13 +266,14 @@ if QT_FRAMEWORK is not None:
     class DescriptorCalculatorDialog(QMainWindow):
         """Main descriptor calculator dialog."""
         
-        def __init__(self, molecule, parent=None):
+        def __init__(self, molecule=None, parent=None):
             super().__init__(parent)
-            self.molecule = molecule
+            self.molecules = [molecule] if molecule else []
             self.current_results = {}
+            self.batch_results = []
             self.calculation_thread = None
             
-            self.setWindowTitle("Molecular Descriptor Calculator")
+            self.setWindowTitle("Molecular Descriptor Calculator (PyDes)")
             self.setGeometry(100, 100, 1200, 800)
             
             self.init_ui()
@@ -299,9 +293,15 @@ if QT_FRAMEWORK is not None:
             
             self.tab_widget = QTabWidget()
             
-            # Selection tab
-            self.selection_widget = SelectionBuilder(self.molecule)
-            self.tab_widget.addTab(self.selection_widget, "Selection")
+            # Selection tab (If single molecule)
+            if self.molecules and len(self.molecules) == 1:
+                self.selection_widget = SelectionBuilder(self.molecules[0])
+                self.tab_widget.addTab(self.selection_widget, "Selection")
+            else:
+                # Placeholder for multi-molecule
+                lbl = QLabel(f"Loaded {len(self.molecules)} molecules for batch processing.")
+                lbl.setAlignment(Qt.AlignCenter)
+                self.tab_widget.addTab(lbl, "Selection")
             
             # Configuration tab
             self.config_widget = DescriptorConfigWidget()
@@ -360,7 +360,11 @@ if QT_FRAMEWORK is not None:
             # Control buttons
             button_layout = QHBoxLayout()
             
-            self.calculate_btn = QPushButton("Calculate Descriptors")
+            self.load_files_btn = QPushButton("Load Files...")
+            self.load_files_btn.clicked.connect(self.load_files)
+            button_layout.addWidget(self.load_files_btn)
+            
+            self.calculate_btn = QPushButton("Calculate PyDes Descriptors")
             self.calculate_btn.clicked.connect(self.calculate_descriptors)
             button_layout.addWidget(self.calculate_btn)
             
@@ -498,34 +502,50 @@ if QT_FRAMEWORK is not None:
                 }}
             """)
         
+        def load_files(self):
+            """Load multiple molecules for batch processing."""
+            from src.shared.qt_compat import QFileDialog
+            from pychem.api import load
+            filepaths, _ = QFileDialog.getOpenFileNames(
+                self, "Select Molecule Files", "", "Molecule Files (*.mol *.sdf *.mol2 *.pdb);;All Files (*)"
+            )
+            if filepaths:
+                self.molecules = []
+                for fp in filepaths:
+                    try:
+                        mol = load(fp, parallel=False)
+                        if mol:
+                            if not getattr(mol, 'name', None):
+                                mol.name = os.path.basename(fp)
+                            self.molecules.append(mol)
+                    except Exception as e:
+                        print(f"Error loading {fp}: {e}")
+                
+                self.progress_label.setText(f"Loaded {len(self.molecules)} molecules.")
+                # Update the tab placeholder
+                if len(self.molecules) > 0:
+                    lbl = QLabel(f"Loaded {len(self.molecules)} molecules for batch processing.")
+                    lbl.setAlignment(Qt.AlignCenter)
+                    self.tab_widget.removeTab(0)
+                    self.tab_widget.insertTab(0, lbl, "Selection")
+                    self.tab_widget.setCurrentIndex(0)
+
         def calculate_descriptors(self):
             """Start descriptor calculation."""
-            # Get selection and categories
-            selection = self.selection_widget.get_selection()
-            categories = self.config_widget.get_selected_categories()
-            
-            if not categories:
-                QMessageBox.warning(self, "No Categories", 
-                                "Please select at least one descriptor category.")
-                return
-            
-            if not selection.atom_indices:
-                QMessageBox.warning(self, "No Selection", 
-                                "Please select at least one atom.")
+            if not self.molecules:
+                QMessageBox.warning(self, "No Molecules", "Please load at least one molecule.")
                 return
             
             # Start calculation thread
             self.calculate_btn.setEnabled(False)
+            self.load_files_btn.setEnabled(False)
             self.stop_btn.setEnabled(True)
             self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
-            self.progress_label.setText("Starting calculation...")
+            self.progress_bar.setRange(0, 0) # Indeterminate progress for batch
+            self.progress_label.setText(f"Starting calculation for {len(self.molecules)} molecules...")
             
-            self.calculation_thread = DescriptorCalculationThread(
-                self.config_widget.engine, self.molecule, selection, categories
-            )
+            self.calculation_thread = DescriptorCalculationThread(self.molecules, n_jobs=-1)
             
-            self.calculation_thread.progress_updated.connect(self.update_progress)
             self.calculation_thread.calculation_finished.connect(self.calculation_completed)
             self.calculation_thread.error_occurred.connect(self.calculation_error)
             
@@ -538,8 +558,10 @@ if QT_FRAMEWORK is not None:
                 self.calculation_thread.wait()
                 
                 self.calculate_btn.setEnabled(True)
+                self.load_files_btn.setEnabled(True)
                 self.stop_btn.setEnabled(False)
                 self.progress_bar.setVisible(False)
+                self.progress_bar.setRange(0, 100)
                 self.progress_label.setText("Calculation stopped")
         
         def update_progress(self, progress: CalculationProgress):
@@ -548,42 +570,45 @@ if QT_FRAMEWORK is not None:
             self.progress_label.setText(f"Calculating {progress.current_descriptor} "
                                   f"({progress.completed}/{progress.total})")
         
-        def calculation_completed(self, results: Dict[str, DescriptorResult]):
+        def calculation_completed(self, results: Dict[str, Any]):
             """Handle calculation completion."""
-            self.current_results = results
+            self.batch_results = results.get('batch_results', [])
+            if self.batch_results:
+                self.current_results = self.batch_results[0]
             
             self.calculate_btn.setEnabled(True)
+            self.load_files_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
             self.progress_bar.setVisible(False)
-            self.progress_label.setText(f"Calculation completed: {len(results)} descriptors")
+            self.progress_bar.setRange(0, 100)
+            num_desc = len(self.current_results) if self.current_results else 0
+            self.progress_label.setText(f"Calculation completed: {num_desc} descriptors for {len(self.batch_results)} molecules")
             
-            # Populate results table
-            self.populate_results_table(results)
+            # Populate results table (showing first molecule as preview)
+            if self.current_results:
+                self.populate_results_table(self.current_results)
             
             # Enable export buttons
             self.export_results_btn.setEnabled(True)
-            self.export_documentation_btn.setEnabled(True)
             
             QMessageBox.information(self, "Calculation Complete", 
-                               f"Successfully calculated {len(results)} descriptors.\n"
-                               f"Results are displayed in the table below.\n"
+                               f"Successfully calculated {num_desc} descriptors for {len(self.batch_results)} molecules.\n"
                                f"Use the Export buttons to save results to CSV.")
         
-        def populate_results_table(self, results: Dict[str, DescriptorResult]):
-            """Populate the results table with calculated descriptors."""
+        def populate_results_table(self, results: Dict[str, Any]):
+            """Populate the results table with calculated descriptors for preview."""
             self.results_table.setRowCount(len(results))
             
-            for row, (name, result) in enumerate(results.items()):
+            for row, (name, value) in enumerate(results.items()):
                 # Descriptor name
                 self.results_table.setItem(row, 0, QTableWidgetItem(name))
                 
                 # Value
-                value_str = f"{result.value:.6f}" if isinstance(result.value, float) else str(result.value)
+                value_str = f"{value:.6f}" if isinstance(value, float) else str(value)
                 self.results_table.setItem(row, 1, QTableWidgetItem(value_str))
                 
-                # Category (get from descriptor info)
-                category = self.get_descriptor_category(name)
-                self.results_table.setItem(row, 2, QTableWidgetItem(category))
+                # Category 
+                self.results_table.setItem(row, 2, QTableWidgetItem("PyDes"))
             
             # Resize columns to fit content
             self.results_table.resizeColumnsToContents()
@@ -604,8 +629,10 @@ if QT_FRAMEWORK is not None:
         def calculation_error(self, error_message: str):
             """Handle calculation error."""
             self.calculate_btn.setEnabled(True)
+            self.load_files_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
             self.progress_bar.setVisible(False)
+            self.progress_bar.setRange(0, 100)
             self.progress_label.setText("Calculation failed")
             
             QMessageBox.critical(self, "Calculation Error", 
@@ -663,28 +690,19 @@ if QT_FRAMEWORK is not None:
                                   f"Error exporting documentation:\n{str(e)}")
         
         def export_results_to_csv(self, filepath: str):
-            """Export calculation results to CSV file."""
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
+            """Export calculation results to CSV file in transposed batch format."""
+            if not self.batch_results:
+                return
                 
-                # Write header
-                writer.writerow(['Descriptor', 'Value', 'Category', 'Description', 'Unit'])
+            import pandas as pd
+            df = pd.DataFrame(self.batch_results)
+            
+            # Ensure Molecule_Name is the first column
+            if 'Molecule_Name' in df.columns:
+                cols = ['Molecule_Name'] + [col for col in df.columns if col != 'Molecule_Name']
+                df = df[cols]
                 
-                # Write results
-                for name, result in self.current_results.items():
-                    value_str = f"{result.value:.6f}" if isinstance(result.value, float) else str(result.value)
-                    
-                    # Get descriptor info
-                    category = self.get_descriptor_category(name)
-                    description, unit = self.get_descriptor_info(name)
-                    
-                    writer.writerow([
-                        name,
-                        value_str,
-                        category,
-                        description,
-                        unit
-                    ])
+            df.to_csv(filepath, index=False)
         
         def get_descriptor_info(self, descriptor_name: str) -> tuple[str, str]:
             """Get description and unit for a descriptor name."""
@@ -722,20 +740,11 @@ if QT_FRAMEWORK is not None:
                             getattr(desc, 'range', '') or ''
                         ])
 
-    def show_descriptor_calculator(molecule, parent=None):
+    def show_descriptor_calculator(molecule=None, parent=None):
         """Show descriptor calculator dialog."""
-        print(f"[DEBUG GUI] show_descriptor_calculator called")
-        print(f"[DEBUG GUI] Using {QT_FRAMEWORK} for GUI")
-        print(f"[DEBUG GUI] Molecule type: {type(molecule)}")
-        print(f"[DEBUG GUI] Molecule atoms: {len(molecule.atoms)}")
-        print(f"[DEBUG GUI] Parent type: {type(parent)}")
-        
         try:
             dialog = DescriptorCalculatorDialog(molecule, parent)
-            print(f"[DEBUG GUI] Dialog created successfully: {type(dialog)}")
-            print(f"[DEBUG GUI] Showing dialog...")
             dialog.show()
-            print(f"[DEBUG GUI] Dialog shown")
             return dialog
         except Exception as e:
             print(f"[DEBUG GUI] Error creating dialog: {e}")
