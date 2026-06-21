@@ -370,6 +370,10 @@ class PainterRenderer:
         if v._is_selecting and v._sel_rect_origin and v._sel_rect_end:
             self._draw_rubber_band(v, painter)
 
+        # Draw lasso selection polygon (while Ctrl+dragging)
+        if getattr(v, '_is_lasso', False) and getattr(v, '_lasso_path', []):
+            self._draw_lasso(v, painter)
+
         # Draw SASA point-cloud surface
         if getattr(v, 'show_sasa_surface', False):
             self._draw_sasa_surface(v, painter, width, height)
@@ -683,6 +687,25 @@ class PainterRenderer:
                             Qt.PenStyle.DashLine))
         painter.setBrush(QBrush(QColor(255, 200, 50, 40)))
         painter.drawRect(rect)
+
+    def _draw_lasso(self, v, painter):
+        """Draw the freehand lasso polygon overlay (Ctrl+drag)."""
+        lasso = getattr(v, '_lasso_path', [])
+        if len(lasso) < 2:
+            return
+
+        path = QPainterPath()
+        path.moveTo(lasso[0])
+        for pt in lasso[1:]:
+            path.lineTo(pt)
+        path.closeSubpath()
+
+        # Vivid cyan dashed outline + translucent fill
+        pen = QPen(QColor(0, 220, 255, 220), 1.8, Qt.PenStyle.DashLine)
+        pen.setDashPattern([6, 3])
+        painter.setPen(pen)
+        painter.setBrush(QBrush(QColor(0, 200, 255, 30)))
+        painter.drawPath(path)
 
     # ─── Large molecule fast path ────────────────────────────────
 

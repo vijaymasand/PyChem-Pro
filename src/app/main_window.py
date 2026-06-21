@@ -666,6 +666,9 @@ class MainWindow(QMainWindow):
     def _export_mol2(self):
         _file_ops.export_mol2(self)
 
+    def _export_cif(self):
+        _file_ops.export_cif(self)
+
     def _export_image(self, dpi, white_bg):
         _file_ops.export_image(self, dpi, white_bg)
 

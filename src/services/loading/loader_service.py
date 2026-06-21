@@ -19,7 +19,8 @@ class LoaderService:
         mol = svc.load("protein.pdb")    # auto-selects reader
     """
 
-    SUPPORTED: List[str] = [".pdb", ".ent", ".mol", ".mol2", ".sdf", ".sd"]
+    SUPPORTED: List[str] = [".pdb", ".ent", ".mol", ".mol2", ".sdf", ".sd",
+                             ".cif", ".mmcif"]
 
     def __init__(self, executor: Optional[ParallelExecutor] = None):
         self.executor = executor or ParallelExecutor()
@@ -92,5 +93,8 @@ class LoaderService:
             return read_mol2(path)
         elif ext in (".sdf", ".sd"):
             return read_sdf(path)
+        elif ext in (".cif", ".mmcif"):
+            from pdbx.mmcif_molecule import read_mmcif
+            return read_mmcif(path)
         else:
             raise ValueError(f"Unsupported file format: {ext}")

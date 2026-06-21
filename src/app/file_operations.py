@@ -38,7 +38,8 @@ def import_structure_file(window, filepath=None):
     if not filepath:
         filepath, _ = QFileDialog.getOpenFileName(
             window, "Import Structure File", "",
-            "All Structure Files (*.mol *.sdf *.mol2 *.pdb *.ent);;"
+            "All Structure Files (*.mol *.sdf *.mol2 *.pdb *.ent *.cif *.mmcif);;"
+            "PDBx/mmCIF Files (*.cif *.mmcif);;"
             "PDB Files (*.pdb *.ent);;"
             "MOL Files (*.mol);;"
             "SDF Files (*.sdf);;"
@@ -155,6 +156,21 @@ def export_mol2(window):
         try:
             from src.features.io.exporters.mol2_writer import write_mol2
             write_mol2(window.molecule, filepath)
+            window.status_bar.showMessage(f"Saved: {filepath}")
+        except Exception as e:
+            QMessageBox.critical(window, "Export Error", str(e))
+
+
+def export_cif(window):
+    if not window.molecule:
+        return
+    filepath, _ = QFileDialog.getSaveFileName(
+        window, "Save PDBx/mmCIF File", "",
+        "PDBx/mmCIF Files (*.cif *.mmcif);;All Files (*)")
+    if filepath:
+        try:
+            from src.features.io.exporters.mmcif_exporter import write_mmcif
+            write_mmcif(window.molecule, filepath)
             window.status_bar.showMessage(f"Saved: {filepath}")
         except Exception as e:
             QMessageBox.critical(window, "Export Error", str(e))
@@ -467,7 +483,7 @@ def handle_drag_enter(window, event):
         urls = event.mimeData().urls()
         if urls and urls[0].isLocalFile():
             ext = urls[0].toLocalFile().lower()
-            if ext.endswith(('.smi', '.mol', '.sdf', '.mol2', '.pdb', '.ent')):
+            if ext.endswith(('.smi', '.mol', '.sdf', '.mol2', '.pdb', '.ent', '.cif', '.mmcif')):
                 event.acceptProposedAction()
                 return
     event.ignore()

@@ -94,6 +94,10 @@ class SoftwareMolViewer3D(QWidget):
         self._sel_rect_end = None      # QPointF or None
         self._is_selecting = False     # True while Shift+left-drag is active
 
+        # Lasso selection (screen coords, set during Ctrl+left-drag)
+        self._is_lasso = False         # True while Ctrl+left-drag is active
+        self._lasso_path = []          # List[QPointF] — freehand polygon vertices
+
         # Measurement state
         self._measure_atoms = []   # List of picked atoms for distance/angle
         self._measurements = []    # List of completed measurements
@@ -327,6 +331,9 @@ class SoftwareMolViewer3D(QWidget):
 
     def wheelEvent(self, event: QWheelEvent):
         self._mouse_ctrl.handle_wheel(event)
+
+    def mouseDoubleClickEvent(self, event):
+        self._mouse_ctrl.handle_double_click(event)
 
     def keyPressEvent(self, event):
         if not self._mouse_ctrl.handle_key_press(event):
