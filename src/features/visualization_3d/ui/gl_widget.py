@@ -145,6 +145,16 @@ zoom : float
         # Mouse interaction state
         self._last_mouse_pos = None
         self._mouse_button = None
+        self._mouse_moved = False
+
+        # Rubber-band selection state
+        self._is_selecting = False
+        self._sel_rect_origin = None
+        self._sel_rect_end = None
+
+        # Lasso selection state
+        self._is_lasso = False
+        self._lasso_path = []
 
         # GL resources
         self._shader_mesh = None
@@ -557,6 +567,28 @@ zoom : float
 
             finally:
                 painter.end()
+
+        # Draw lasso polygon overlay (while Ctrl+dragging)
+        if getattr(self, '_is_lasso', False) and getattr(self, '_lasso_path', []):
+            from src.shared.qt_compat import QPainterPath
+            lasso = self._lasso_path
+            if len(lasso) >= 2:
+                path = QPainterPath()
+                path.moveTo(lasso[0])
+                for pt in lasso[1:]:
+                    path.lineTo(pt)
+                path.closeSubpath()
+
+                lasso_painter = QPainter(self)
+                try:
+                    lasso_painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                    pen = QPen(QColor(0, 220, 255, 220), 1.8, Qt.PenStyle.DashLine)
+                    pen.setDashPattern([6, 3])
+                    lasso_painter.setPen(pen)
+                    lasso_painter.setBrush(QBrush(QColor(0, 200, 255, 30)))
+                    lasso_painter.drawPath(path)
+                finally:
+                    lasso_painter.end()
 
     def _render_with_painter(self, painter: QPainter, w: int, h: int):
         """Software render pass using QPainter.

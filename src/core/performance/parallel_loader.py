@@ -125,6 +125,9 @@ class ParallelFileLoader:
             return read_mol2(str(filepath))
         elif ext in ('.pdb', '.ent'):
             return read_pdb(str(filepath))
+        elif ext in ('.cif', '.mmcif'):
+            from pdbx.mmcif_molecule import read_mmcif
+            return read_mmcif(str(filepath))
         else:
             raise ValueError(f"Unsupported file format: {ext}")
     

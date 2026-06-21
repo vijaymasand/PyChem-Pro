@@ -3,21 +3,27 @@ Public facade functions for PyChem.
 
 These thin wrappers delegate to the ServiceRegistry.
 They are the stable public API surface.
+
+mmCIF/PDBx support was added in PyChem-Pro v1.0 (2026-06-21).
+Use ``read_mmcif``, ``write_mmcif``, ``read_mmcif_models``, and the
+generic ``export()`` dispatcher for PDBx/mmCIF I/O.
 """
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, List
 
 if TYPE_CHECKING:
     from src.core.domain.models.molecule import Molecule
 
 
 def load(path: str, parallel: bool = True) -> "Molecule":
-    """Load a molecular file (PDB, MOL, MOL2, SDF).
+    """Load a molecular file (PDB, MOL, MOL2, SDF, CIF, mmCIF).
 
     Uses parallel chunk parsing for large files by default.
 
     Args:
-        path: Path to the molecular file.
+        path:     Path to the molecular file.  Supported extensions:
+                  ``.pdb``, ``.ent``, ``.mol``, ``.mol2``, ``.sdf``, ``.sd``,
+                  ``.cif``, ``.mmcif``.
         parallel: Allow parallel processing for large files.
 
     Returns:
@@ -65,7 +71,102 @@ def descriptors(mol, names=None) -> dict:
     return get_registry().descriptors.calculate(mol, descriptor_names=names)
 
 
-def descriptors_batch(molecules, names=None) -> list[dict]:
+def descriptors_batch(molecules, names=None) -> list:
     """Calculate molecular descriptors for multiple molecules in parallel."""
     from pychem._bridge import get_registry
     return get_registry().descriptors.calculate_batch(molecules, descriptor_names=names)
+
+
+# ── mmCIF / PDBx specific functions ──────────────────────────────────────────
+
+def read_mmcif(path: str, model: int = 1) -> "Molecule":
+    """Read a PDBx/mmCIF file and return a Molecule.
+
+    Args:
+        path:   Path to a ``.cif`` or ``.mmcif`` file.
+        model:  Model number to load (default=1; relevant for NMR ensembles).
+
+    Returns:
+        Molecule instance with atoms, bonds, secondary structure, and
+        metadata stored in ``molecule.properties``.
+    """
+    from pdbx.mmcif_molecule import read_mmcif as _read
+    return _read(path, model=model)
+
+
+def read_mmcif_string(cif_text: str, model: int = 1) -> "Molecule":
+    """Parse CIF text (string) and return a Molecule.
+
+    Args:
+        cif_text: Raw PDBx/mmCIF file content as a string.
+        model:    Model number to load (default=1).
+
+    Returns:
+        Molecule instance.
+    """
+    from pdbx.mmcif_molecule import read_mmcif as _read
+    return _read(cif_text, from_string=True, model=model)
+
+
+def read_mmcif_models(path: str) -> List["Molecule"]:
+    """Read all models from a multi-model mmCIF file (e.g. NMR ensembles).
+
+    Args:
+        path: Path to a ``.cif`` or ``.mmcif`` file.
+
+    Returns:
+        List of Molecule objects, one per model number.
+    """
+    from pdbx.mmcif_molecule import read_mmcif_models as _read_all
+    return _read_all(path)
+
+
+def write_mmcif(mol: "Molecule", filepath: Optional[str] = None,
+                entry_id: Optional[str] = None) -> str:
+    """Write a Molecule to PDBx/mmCIF format.
+
+    Args:
+        mol:        The Molecule to serialise.
+        filepath:   If given, write to this path (UTF-8).
+        entry_id:   PDB-style 4-character entry ID (e.g. ``"1ABC"``).
+
+    Returns:
+        CIF content as a string (also writes to *filepath* if given).
+    """
+    from pdbx.mmcif_molecule import write_mmcif as _write
+    return _write(mol, filepath=filepath, entry_id=entry_id)
+
+
+def export(mol: "Molecule", filepath: str, **kwargs) -> Optional[str]:
+    """Export a Molecule to a file, dispatching by extension.
+
+    Supported formats: ``.mol``, ``.sdf``, ``.mol2``, ``.cif``, ``.mmcif``.
+
+    Args:
+        mol:      The Molecule to export.
+        filepath: Output file path — the extension determines the format.
+        **kwargs: Additional keyword arguments forwarded to the format writer.
+
+    Returns:
+        File content as a string for text formats.
+
+    Raises:
+        ValueError: If the file extension is not supported.
+    """
+    import os
+    ext = os.path.splitext(filepath)[1].lower()
+
+    if ext == ".mol":
+        from src.features.io.exporters.sdf_writer import write_mol
+        return write_mol(mol, filepath=filepath)
+    elif ext in (".sdf", ".sd"):
+        from src.features.io.exporters.sdf_writer import write_sdf
+        return write_sdf(mol, filepath=filepath, **kwargs)
+    elif ext == ".mol2":
+        from src.features.io.exporters.mol2_writer import write_mol2
+        return write_mol2(mol, filepath=filepath)
+    elif ext in (".cif", ".mmcif"):
+        from src.features.io.exporters.mmcif_exporter import write_mmcif_molecule
+        return write_mmcif_molecule(mol, filepath=filepath, **kwargs)
+    else:
+        raise ValueError(f"Unsupported export format: {ext}")

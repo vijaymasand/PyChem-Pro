@@ -51,6 +51,11 @@ def _build_file_menu(window, menu_bar):
     save_mol2.triggered.connect(window._export_mol2)
     file_menu.addAction(save_mol2)
 
+    save_cif = QAction("Save as &PDBx/mmCIF...", window)
+    save_cif.setShortcut(QKeySequence("Ctrl+Alt+S"))
+    save_cif.triggered.connect(window._export_cif)
+    file_menu.addAction(save_cif)
+
     save_img = QAction("Export &Image...", window)
     save_img.setShortcut(QKeySequence("Ctrl+E"))
     save_img.triggered.connect(lambda: window._export_image(300, True))

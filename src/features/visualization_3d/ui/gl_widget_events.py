@@ -1,6 +1,6 @@
 import math
 import numpy as np
-from src.shared.qt_compat import Qt, QVector3D, QVector4D, QColor, QApplication, QWheelEvent
+from src.shared.qt_compat import Qt, QVector3D, QVector4D, QColor, QApplication, QWheelEvent, QPointF
 
 class GLEventMixin:
     def _auto_fit(self):
@@ -90,6 +90,26 @@ class GLEventMixin:
         self._mouse_button = event.button()
         self._mouse_moved = False
 
+        modifiers = event.modifiers()
+
+        # Ctrl + left-click begins lasso selection
+        if (event.button() == Qt.MouseButton.LeftButton
+                and modifiers & Qt.KeyboardModifier.ControlModifier):
+            self._is_lasso = True
+            self._lasso_path = [QPointF(event.position())]
+            return
+
+        # Shift + left-click begins rubber-band selection
+        if (event.button() == Qt.MouseButton.LeftButton
+                and modifiers & Qt.KeyboardModifier.ShiftModifier):
+            self._is_lasso = False
+            self._is_selecting = True
+            self._sel_rect_origin = event.position()
+            self._sel_rect_end = event.position()
+            return
+
+        self._is_lasso = False
+
     def mouseMoveEvent(self, event):
         if self._last_mouse_pos is None:
             return
@@ -99,6 +119,12 @@ class GLEventMixin:
         
         if abs(dx) > 2 or abs(dy) > 2:
             self._mouse_moved = True
+
+        # ── Lasso drag ────────────────────────────────────────────
+        if getattr(self, '_is_lasso', False):
+            self._lasso_path.append(QPointF(event.position()))
+            self.update()
+            return
 
         if self._mouse_button == Qt.MouseButton.LeftButton:
             self.rot_y += dx * 0.5
@@ -120,11 +146,140 @@ class GLEventMixin:
         self.update()
 
     def mouseReleaseEvent(self, event):
+        # ── Finish lasso ──────────────────────────────────────────
+        if getattr(self, '_is_lasso', False) and event.button() == Qt.MouseButton.LeftButton:
+            self._commit_lasso_selection_gl()
+            self._is_lasso = False
+            self._lasso_path = []
+            self._last_mouse_pos = None
+            self._mouse_button = None
+            self.update()
+            return
+
         if not getattr(self, '_mouse_moved', False) and self._mouse_button == Qt.MouseButton.LeftButton:
             self._handle_click(event.position())
         self._last_mouse_pos = None
         self._mouse_button = None
         self._mouse_moved = False
+
+    def mouseDoubleClickEvent(self, event):
+        """Double-click: select entire ligand/fragment that the clicked atom belongs to."""
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+
+        atom_idx = self._hit_test(event.position())
+        if atom_idx == -1:
+            return
+
+        ligand_atoms = self._get_ligand_atoms_gl(atom_idx)
+        if ligand_atoms:
+            self.selected_atoms = set(ligand_atoms)
+            if not hasattr(self, '_selected_atoms_ordered'):
+                self._selected_atoms_ordered = []
+            self._selected_atoms_ordered = list(ligand_atoms)[:3]
+            self.selection_changed.emit(set(self.selected_atoms))
+            self.update()
+
+    def _get_ligand_atoms_gl(self, atom_idx):
+        """
+        Return the set of atom indices for the ligand/fragment containing atom_idx.
+
+        For PDB proteins: groups HETATM atoms by (res_name, res_seq, chain_id).
+        For SDF/MOL2/MOL: BFS to find the whole connected fragment.
+        """
+        if not self.molecule or atom_idx >= len(self.molecule.atoms):
+            return set()
+
+        atom = self.molecule.atoms[atom_idx]
+        is_protein = getattr(self.molecule, 'properties', {}).get('is_protein', False)
+
+        if is_protein and getattr(atom, 'is_hetatm', False):
+            target_res = (
+                getattr(atom, 'res_name', None),
+                getattr(atom, 'res_seq', None),
+                getattr(atom, 'chain_id', None),
+            )
+            if target_res[0] and target_res[0].upper() in ('HOH', 'WAT', 'SOL', 'DOD'):
+                return {atom_idx}
+
+            ligand_indices = set()
+            for a in self.molecule.atoms:
+                if getattr(a, 'is_hetatm', False):
+                    res = (
+                        getattr(a, 'res_name', None),
+                        getattr(a, 'res_seq', None),
+                        getattr(a, 'chain_id', None),
+                    )
+                    if res == target_res:
+                        ligand_indices.add(a.index)
+            return ligand_indices
+        else:
+            # BFS over molecule adjacency
+            adjacency = self.molecule._adjacency
+            visited = set()
+            queue = [atom_idx]
+            while queue:
+                current = queue.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                for neighbor, _ in adjacency.get(current, []):
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+            return visited
+
+    def _commit_lasso_selection_gl(self):
+        """
+        Finalise Ctrl+drag lasso for the GL viewer: project all atoms, test each
+        projected point against the freehand polygon, add enclosed atoms to selected_atoms.
+        """
+        lasso = getattr(self, '_lasso_path', [])
+        if len(lasso) < 3:
+            self.selected_atoms.clear()
+            self.selection_changed.emit(set())
+            return
+
+        from src.shared.qt_compat import QPainterPath, QPointF as _QPointF
+
+        path = QPainterPath()
+        path.moveTo(lasso[0])
+        for pt in lasso[1:]:
+            path.lineTo(pt)
+        path.closeSubpath()
+
+        if self._positions is None or len(self._positions) == 0:
+            return
+
+        w = self.width()
+        h = self.height()
+        proj = self._get_projection_matrix()
+        view = self._get_view_matrix()
+        mvp = proj * view
+
+        old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
+        new_to_old = {v: k for k, v in old_to_new.items()}
+
+        newly_selected = set()
+        for i in range(len(self._positions)):
+            vec = QVector3D(
+                float(self._positions[i][0]),
+                float(self._positions[i][1]),
+                float(self._positions[i][2]),
+            )
+            clip = mvp.map(vec)
+            view_pos = view.map(vec)
+            if view_pos.z() > 0:
+                continue
+
+            sx = (clip.x() + 1.0) * 0.5 * w
+            sy = (1.0 - clip.y()) * 0.5 * h
+
+            if path.contains(_QPointF(sx, sy)):
+                newly_selected.add(new_to_old.get(i, i))
+
+        if newly_selected:
+            self.selected_atoms |= newly_selected
+        self.selection_changed.emit(set(self.selected_atoms))
 
     def _handle_click(self, pos):
         from src.shared.qt_compat import QApplication
@@ -159,6 +314,16 @@ class GLEventMixin:
         self.update()
 
     def _hit_test(self, pos):
+        """
+        Return the atom index closest to *pos* in screen-space.
+
+        Improved accuracy over the original:
+        - Candidates must lie within max(6px, 1.5× projected radius) of the cursor.
+        - The candidate with the **smallest screen-space distance to centre** wins.
+        - Depth (view-space z) is used only to break ties within 2 px of each other.
+        - This prevents large cartoon-mesh atoms from hijacking clicks that visually
+          land on a foreground ligand atom.
+        """
         if self._positions is None or len(self._positions) == 0:
             return -1
 
@@ -171,18 +336,22 @@ class GLEventMixin:
         click_x = pos.x()
         click_y = pos.y()
         
-        closest_idx = -1
-        min_dist_sq = float('inf')
-        closest_z = float('inf')
+        best_idx = -1
+        best_screen_dist = float('inf')
+        best_z = float('inf')
         
         old_to_new = getattr(self.molecule, 'properties', {}).get('_old_to_new_idx', {})
         new_to_old = {v: k for k, v in old_to_new.items()}
         
         for i in range(len(self._positions)):
-            vec = QVector3D(float(self._positions[i][0]), float(self._positions[i][1]), float(self._positions[i][2]))
+            vec = QVector3D(
+                float(self._positions[i][0]),
+                float(self._positions[i][1]),
+                float(self._positions[i][2]),
+            )
             clip = mvp.map(vec)
             
-            # Behind camera
+            # Behind camera — skip
             view_pos = view.map(vec)
             if view_pos.z() > 0:
                 continue
@@ -192,26 +361,32 @@ class GLEventMixin:
             
             dx = sx - click_x
             dy = sy - click_y
-            dist_sq = dx*dx + dy*dy
+            screen_dist = math.sqrt(dx * dx + dy * dy)
             
-            # Determine radius to see if it's a hit
+            # Projected sphere radius at this depth
             if view_pos.z() < -0.1:
                 scale = (h / 2.0) / (math.tan(math.radians(22.5)) * -view_pos.z())
             else:
                 scale = 1.0
             radius = self._radii[i] * scale * self.sphere_scale
+
+            # Hit tolerance: at least 6 px (to keep tiny atoms clickable),
+            # but only up to 1.5× the actual sphere radius for precision.
+            hit_radius = max(6.0, radius * 1.5)
             
-            # Larger hit radius for proteins because the cartoon mesh is much thicker than the atoms
-            min_hit_radius = 35 if getattr(self, 'molecule', None) and self.molecule.properties.get('is_protein') else 20
-            hit_radius_sq = (max(min_hit_radius, radius * 2.0)) ** 2
-            
-            if dist_sq <= hit_radius_sq:
-                if view_pos.z() < closest_z:
-                    closest_z = view_pos.z()
-                    closest_idx = new_to_old.get(i, i)
-                    min_dist_sq = dist_sq
+            if screen_dist <= hit_radius:
+                vz = view_pos.z()
+                # Prefer closest to cursor centre; break ties (within 2 px) by depth
+                if screen_dist < best_screen_dist - 2.0:
+                    best_screen_dist = screen_dist
+                    best_z = vz
+                    best_idx = new_to_old.get(i, i)
+                elif screen_dist < best_screen_dist + 2.0 and vz < best_z:
+                    best_z = vz
+                    best_idx = new_to_old.get(i, i)
+                    best_screen_dist = screen_dist
                     
-        return closest_idx
+        return best_idx
 
     def wheelEvent(self, event: QWheelEvent):
         delta = event.angleDelta().y()
@@ -315,4 +490,3 @@ class GLEventMixin:
     def clear(self):
         """Remove the current molecule and clear the view."""
         self.set_molecule(None)
-

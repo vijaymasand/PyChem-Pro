@@ -20,3 +20,6 @@ build/
 venv/
 .venv/
 env/
+
+*.cif
+*.mmcif
