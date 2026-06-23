@@ -13,6 +13,8 @@
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/vijaymasand)
 
+**Note:** The next free training session on ‘PyChem-Pro’ is on 27th June 2026. Time and link will be shared in the WhatsApp group (https://chat.whatsapp.com/J5SZGqKxDWj6XDpYlhKUhB). Please join to get daily updates and discussion.
+
 ---
 
 ## Table of Contents
