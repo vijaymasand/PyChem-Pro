@@ -13,8 +13,6 @@
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/vijaymasand)
 
-**Note:** The next free training session on ‘PyChem-Pro’ is on 27th June 2026. Time and link will be shared in the WhatsApp group (https://chat.whatsapp.com/J5SZGqKxDWj6XDpYlhKUhB). Please join to get daily updates and discussion.
-
 ---
 
 ## Table of Contents
@@ -48,7 +46,7 @@
 
 ## About PyChem-Pro
 
-PyChem-Pro is a desktop chemistry application and Python library that combines molecular visualization (like PyMOL) with cheminformatics primitives (like RDKit). Unlike most tools in the space, PyChem-Pro is **pure Python with NumPy**. There is no C++ extension, no dependency on any cheminformatics library. Every feature — SMILES parsing, 3D coordinate generation, force field optimization, descriptor calculation, Shrake-Rupley SASA, ring perception, protein cartoon rendering — is implemented from scratch and readable end-to-end.
+PyChem-Pro is a desktop chemistry application and Python library that combines molecular visualization (like PyMOL) with cheminformatics primitives (like RDKit). Unlike most tools in the space, PyChem-Pro is **pure Python with NumPy**. There is no C++ extension, no dependency on any cheminformatics library. Every feature — SMILES parsing, 3D coordinate generation, force field optimization, descriptor calculation, Shrake-Rupley SASA, ring perception, protein cartoon rendering — is implemented from scratch and readable end-to-end. It uses multiprocessing for various functions and operations.
 
 This makes PyChem-Pro:
 
@@ -56,12 +54,13 @@ This makes PyChem-Pro:
 - **Portable.** No compilers. No system libraries beyond Python and Qt. Runs on Windows, macOS, and Linux identically.
 - **Extensible.** A service-oriented architecture with Protocol interfaces lets researchers swap the force field, the renderer, or the file loader without touching the rest of the codebase.
 - **Academic-friendly.** Intended for inclusion in university cheminformatics curricula and as an open-source reference implementation.
+- **Industry-ready.** Multiprocessing and parallel processing abilities makes it highly suitable for large datasets and ready for industrial use.
 
 ## Key Features
 
 ### Chemistry
 - SMILES parser with Huckel aromaticity perception, stereochemistry, bracketed atoms, radicals
-- PDB /PDBx / mmCIF/ MOL / MOL2 / SDF file readers with automatic bond detection and CONECT parsing
+- PDB / PDBx / mmCIF/ MOL / MOL2 / SDF file readers with automatic bond detection and CONECT parsing
 - 3D coordinate generation from molecular topology (BFS + force-field relaxation)
 - **MMFF94 force field** with hydrogen addition, bond stretching, angle bending, torsion, Van der Waals, and BCI partial charge assignment
 - L-BFGS and steepest descent optimizers
@@ -579,7 +578,7 @@ Cross-platform rationale:
 
 | Service | What is parallelized |
 |---------|----------------------|
-| File loading | PDB / MOL2 atom record parsing split into N chunks |
+| File loading | PDB / PDBx / mmCIF / MOL2 atom record parsing split into N chunks |
 | MMFF94 force field | VdW pairwise computation split into N chunks (only when >200 pairs) |
 | Coordinate generation | N conformers with independent random seeds, return lowest energy |
 | Descriptor calculation | Batch molecules distributed across workers |
