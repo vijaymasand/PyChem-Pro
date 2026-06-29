@@ -1,10 +1,10 @@
 """
-Build script — compile PyChem into a native standalone binary with Nuitka.
+Build script — compile PyChem-Pro into a native standalone binary with Nuitka.
 
 Produces:
-  macOS   → dist/PyChem.app     (wrap with `python package_dmg.py` to get a .dmg)
-  Windows → dist/PyChem.exe     (single-file)
-  Linux   → dist/PyChem         (single-file)
+  macOS   → dist/PyChem-Pro.app     (wrap with `python package_dmg.py` to get a .dmg)
+  Windows → dist/PyChem-Pro.exe     (single-file)
+  Linux   → dist/PyChem-Pro         (single-file)
 
 Usage:
     python build.py                 # onefile/app-bundle
@@ -18,10 +18,10 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-APP_NAME = "PyChem"
+APP_NAME = "PyChem-Pro"
 VERSION = "1.0.0"
 COMPANY = "PyChem"
-DESCRIPTION = "PyChem - Molecular Visualization Software"
+DESCRIPTION = "PyChem-Pro - Molecular Visualization Software"
 
 
 def build(onefile: bool = True) -> None:
@@ -44,6 +44,8 @@ def build(onefile: bool = True) -> None:
         f"--file-description={DESCRIPTION}",
         "--include-package=src",
         "--include-package=pychem",
+        "--include-package=pdbx",
+        "--include-package=plugins",
         "--include-data-files=plugins/*.py=plugins/",
         "--include-data-dir=plugins=plugins",
         "--include-data-dir=assets=assets",
