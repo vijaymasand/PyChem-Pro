@@ -497,7 +497,14 @@ class QsarRfaWidget(PluginWidget):
         left_layout.addLayout(split_layout)
 
         auto_layout = QHBoxLayout()
-        self.btn_auto = QPushButton("Auto Split (80/20)")
+        
+        auto_layout.addWidget(QLabel("Train %:"))
+        self.split_spin = QSpinBox()
+        self.split_spin.setRange(1, 99)
+        self.split_spin.setValue(80)
+        auto_layout.addWidget(self.split_spin)
+
+        self.btn_auto = QPushButton("Auto Split")
         self.btn_auto.clicked.connect(self.auto_split)
         auto_layout.addWidget(self.btn_auto)
         auto_layout.addStretch()
@@ -667,7 +674,9 @@ class QsarRfaWidget(PluginWidget):
         if self.dataset is None: return
         all_ids = list(self.dataset.iloc[:, 0])
         np.random.shuffle(all_ids)
-        split_point = int(0.80 * len(all_ids))
+        
+        train_pct = self.split_spin.value() / 100.0
+        split_point = int(train_pct * len(all_ids))
 
         train_ids, test_ids = sorted(all_ids[:split_point]), sorted(all_ids[split_point:])
 
