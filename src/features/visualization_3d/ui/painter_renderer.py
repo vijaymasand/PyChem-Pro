@@ -490,9 +490,10 @@ class PainterRenderer:
 
     def _draw_sasa_surface(self, v, painter, width, height):
         from src.features.visualization_3d.services.atom_rendering import draw_sasa_surface
+        centroid = getattr(v, '_centroid', None)
         draw_sasa_surface(painter, v.molecule, width, height,
                           v.pan_x, v.pan_y, v.rot_x, v.rot_y, v.zoom,
-                          v.selected_atoms, getattr(v, 'show_sasa_selected_only', False))
+                          v.selected_atoms, getattr(v, 'show_sasa_selected_only', False), centroid)
 
     def _draw_atom_simple(self, painter, sx, sy, radius, color):
         """Draw atom as simple filled circle (fast for large molecules)."""
