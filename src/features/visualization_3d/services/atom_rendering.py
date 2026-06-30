@@ -146,7 +146,7 @@ def draw_residue_label(painter: QPainter, text: str, sx: float, sy: float, color
     painter.drawText(int(sx + offset_x), int(sy + offset_y), text)
 
 def draw_sasa_surface(painter: QPainter, molecule, width: float, height: float, pan_x: float, pan_y: float, 
-                      rot_x: float, rot_y: float, zoom: float, selected_atoms: set, show_selected_only: bool):
+                      rot_x: float, rot_y: float, zoom: float, selected_atoms: set, show_selected_only: bool, centroid=None):
     """Projects and renders the 3D analytical point-cloud surface for solvent accessibility."""
     if not molecule: return
         
@@ -159,6 +159,11 @@ def draw_sasa_surface(painter: QPainter, molecule, width: float, height: float, 
     sin_y = math.sin(math.radians(rot_y))
     
     dot_r = max(1, min(4, zoom * 0.065))
+    
+    # Apply centroid offset if provided
+    cx_offset = centroid[0] if centroid is not None else 0.0
+    cy_offset = centroid[1] if centroid is not None else 0.0
+    cz_offset = centroid[2] if centroid is not None else 0.0
     
     painter.setPen(Qt.PenStyle.NoPen)
     for atom in molecule.atoms:
@@ -173,7 +178,11 @@ def draw_sasa_surface(painter: QPainter, molecule, width: float, height: float, 
         brush = QBrush(QColor(color[0], color[1], color[2], 120))
         painter.setBrush(brush)
         
-        for (x, y, z) in atom.sasa_points:
+        for (px, py, pz) in atom.sasa_points:
+            x = px - cx_offset
+            y = py - cy_offset
+            z = pz - cz_offset
+            
             x1 = x * cos_y + z * sin_y
             z1 = -x * sin_y + z * cos_y
             y1 = y * cos_x - z1 * sin_x
