@@ -83,6 +83,7 @@ This makes PyChem-Pro:
 - High-DPI image export (72 / 150 / 300 / 600 DPI)
 - Offline ray-tracer for publication-quality images
 - Print (Ctrl+P) — prints 2D and 3D views on a single page
+- Open multiple molecules in same window
 
 ### Architecture
 - Service-oriented with `typing.Protocol` interfaces

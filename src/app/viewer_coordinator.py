@@ -51,20 +51,28 @@ def toggle_sidechains(window):
 
 def toggle_sasa(window, checked):
     window.viewer_3d.show_sasa_surface = checked
-    if checked and window.molecule:
-        has_points = any(
-            getattr(a, 'sasa_points', None)
-            for a in window.molecule.atoms
-        )
-        if not has_points:
-            window.status_bar.showMessage("Computing SASA surface...")
+    if checked and not window.scene.is_empty():
+        from src.features.cheminformatics.services.spatial_properties import compute_sasa
+        # Compute SASA for every *visible* object so the overlay shows a surface
+        # for each molecule, not just the active one.
+        pending = [
+            obj for obj in window.scene.visible_objects()
+            if obj.molecule and not any(
+                getattr(a, 'sasa_points', None) for a in obj.molecule.atoms)
+        ]
+        if pending:
+            window.status_bar.showMessage(
+                f"Computing SASA surface for {len(pending)} molecule(s)...")
             QApplication.processEvents()
-            try:
-                from src.features.cheminformatics.services.spatial_properties import compute_sasa
-                compute_sasa(window.molecule)
-                window.status_bar.showMessage("SASA surface computed")
-            except Exception as e:
-                window.status_bar.showMessage(f"SASA computation failed: {e}")
+            for obj in pending:
+                try:
+                    compute_sasa(obj.molecule)
+                except Exception as e:
+                    window.status_bar.showMessage(f"SASA computation failed: {e}")
+            window.status_bar.showMessage("SASA surface computed")
+        # Rebuild the overlay so its merged (cloned) atoms carry the SASA points.
+        if hasattr(window, '_refresh_scene'):
+            window._refresh_scene()
     window.viewer_3d.update()
 
 
@@ -75,9 +83,19 @@ def toggle_sasa_selected_only(window, checked):
 
 def change_render_mode(window, index):
     modes = ['ball_and_stick', 'spacefill', 'wireframe', 'cartoon', 'ribbon', 'backbone']
-    if 0 <= index < len(modes):
-        window.viewer_3d.render_mode = modes[index]
-        window.viewer_3d.update()
+    if not (0 <= index < len(modes)):
+        return
+    mode = modes[index]
+    # The Style combo targets the *active* object. Per-atom modes
+    # (ball & stick / space fill / wireframe) apply to just that object;
+    # cartoon / ribbon / backbone are whole-chain modes applied globally.
+    scene = getattr(window, 'scene', None)
+    if scene is not None and scene.active_object() is not None and hasattr(window, '_refresh_scene'):
+        scene.set_representation(scene.active_id, mode)
+        window._refresh_scene()
+        return
+    window.viewer_3d.render_mode = mode
+    window.viewer_3d.update()
 
 
 # ── Background color ─────────────────────────────────────────────
@@ -272,8 +290,8 @@ def create_dummy_atom_sphere(window, position, radius, color, label):
         original_count = len(window.molecule.atoms)
         window.molecule.add_atom(dummy_atom)
 
-        if hasattr(window.viewer_3d, 'set_molecule'):
-            window.viewer_3d.set_molecule(window.molecule)
+        if hasattr(window, '_refresh_scene'):
+            window._refresh_scene()
         else:
             window.viewer_3d.update()
 
@@ -309,8 +327,8 @@ def clear_all_spheres(window):
                     window.molecule.atoms.remove(dummy_atom)
             window._dummy_atoms.clear()
 
-        if hasattr(window.viewer_3d, 'set_molecule'):
-            window.viewer_3d.set_molecule(window.molecule)
+        if hasattr(window, '_refresh_scene'):
+            window._refresh_scene()
         else:
             window.viewer_3d.update()
 
@@ -485,8 +503,8 @@ def update_atom_colors(window, colors):
                             )
                             window.molecule.dummy_spheres.append(centroid_sphere)
 
-                        if hasattr(window.viewer_3d, 'set_molecule'):
-                            window.viewer_3d.set_molecule(window.molecule)
+                        if hasattr(window, '_refresh_scene'):
+                            window._refresh_scene()
             except Exception as e:
                 pass
 
@@ -517,8 +535,8 @@ def update_atom_colors(window, colors):
                 from src.shared.ui.theme import COLORS as _COLORS
                 window.viewer_3d.COLORS.update(_COLORS)
 
-            if hasattr(window.viewer_3d, 'set_molecule'):
-                window.viewer_3d.set_molecule(window.molecule)
+            if hasattr(window, '_refresh_scene'):
+                window._refresh_scene()
 
             if hasattr(window.viewer_3d, '_renderer') and hasattr(window.viewer_3d._renderer, 'invalidate_cache'):
                 window.viewer_3d._renderer.invalidate_cache()

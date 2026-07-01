@@ -31,8 +31,9 @@ def _build_file_menu(window, menu_bar):
     open_smiles.triggered.connect(window._open_smiles_file)
     file_menu.addAction(open_smiles)
 
-    import_mol = QAction("&Import MOL/SDF/MOL2...", window)
+    import_mol = QAction("&Import Structures (MOL/SDF/MOL2/PDB/CIF)...", window)
     import_mol.setShortcut(QKeySequence("Ctrl+I"))
+    import_mol.setToolTip("Open one or more structures — they overlay in the 3D view")
     import_mol.triggered.connect(lambda: window._import_structure_file(None))
     file_menu.addAction(import_mol)
 

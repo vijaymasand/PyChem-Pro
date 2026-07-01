@@ -57,16 +57,17 @@ class PainterRenderer:
                              alpha=1.0):
         """Return a positioned QRadialGradient, reusing cached colour stops.
 
-        The cache key is ``(element_symbol, radius_bucket, is_hovered,
-        use_ssao)`` so atoms of the same element at the same visual size
-        share the same computed colour stops.  The gradient is then
-        repositioned to *(sx, sy)* which is a trivial operation.
+        The cache key includes the actual ``rgb`` colour so atoms of the same
+        element at the same visual size but with *different* (custom / per-object)
+        colours do not share a cached gradient.  Without the colour in the key,
+        the first-drawn carbon would tint every other molecule's carbons.  The
+        gradient is then repositioned to *(sx, sy)* which is a trivial operation.
         """
         bucket = round(radius * 2)  # half-pixel buckets
         # Quantise depth for shading so nearby atoms share the same entry
         depth_bucket = round(sz * 4)
         key = (element_symbol, bucket, is_hovered, use_ssao, depth_bucket,
-               int(alpha * 255))
+               int(alpha * 255), tuple(rgb))
 
         if key not in self._gradient_cache:
             r, g, b = rgb
