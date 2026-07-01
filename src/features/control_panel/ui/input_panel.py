@@ -35,7 +35,11 @@ class InputPanel(QWidget):
         # to follow a live theme swap through the app-level stylesheet
         # cascade.  Inline stylesheets win and give us reliable swaps.
         self.setObjectName("leftPanel")
-        self.setFixedWidth(300)
+        # Responsive: a sensible minimum instead of a hard-coded width so the
+        # left column can be resized via the splitter and adapt to the device.
+        self.setMinimumWidth(240)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred,
+                           QSizePolicy.Policy.Expanding)
         self._init_ui()
         self._apply_theme()
         try:

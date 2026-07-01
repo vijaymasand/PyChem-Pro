@@ -27,7 +27,7 @@ def optimize_geometry(window, checked=False, method=None):
         if "AM1" in method:
             from src.features.cheminformatics.services.am1 import am1_optimize_geometry
             success = am1_optimize_geometry(window.molecule, max_steps=50)
-            window.viewer_3d.set_molecule(window.molecule)
+            window._refresh_scene()
             status = "converged" if success else "max steps reached"
             window.status_bar.showMessage(f"Optimized (AM1: {status})")
         else:
@@ -41,9 +41,7 @@ def optimize_geometry(window, checked=False, method=None):
                 window.molecule, max_iters=500, method='steepest_descent'
             )
             added_h = len(window.molecule.atoms) - pre_atoms
-            window.input_panel.update_molecule_info(window.molecule)
-            window.viewer_3d.set_molecule(window.molecule)
-            window.viewer_2d.set_molecule(window.molecule)
+            window._refresh_scene()
             status = "converged" if result.converged else f"stopped ({result.num_steps} steps)"
             window.status_bar.showMessage(
                 f"Optimized (MMFF94: {status}, {added_h} H added, E={result.final_energy:.2f})"

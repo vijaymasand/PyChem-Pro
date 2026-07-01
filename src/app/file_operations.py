@@ -34,10 +34,16 @@ def open_smiles_file(window):
 
 
 def import_structure_file(window, filepath=None):
-    """Import a molecule from MOL, SDF, MOL2, or PDB file."""
-    if not filepath:
-        filepath, _ = QFileDialog.getOpenFileName(
-            window, "Import Structure File", "",
+    """Import one or more molecules from MOL / SDF / MOL2 / PDB / PDBx files.
+
+    Each file becomes a separate object in the scene (PyMOL-style overlay).
+    Selecting several files at once loads them all.
+    """
+    if filepath:
+        filepaths = [filepath]
+    else:
+        filepaths, _ = QFileDialog.getOpenFileNames(
+            window, "Import Structure File(s)", "",
             "All Structure Files (*.mol *.sdf *.mol2 *.pdb *.ent *.cif *.mmcif);;"
             "PDBx/mmCIF Files (*.cif *.mmcif);;"
             "PDB Files (*.pdb *.ent);;"
@@ -45,88 +51,80 @@ def import_structure_file(window, filepath=None):
             "SDF Files (*.sdf);;"
             "MOL2 Files (*.mol2);;"
             "All Files (*)")
-    if not filepath:
-        # print("[DEBUG] No file selected")  # Commented out for reduced verbosity
+
+    if not filepaths:
         return
 
-    # print(f"[DEBUG] Selected file: {filepath}")  # Commented out for reduced verbosity
-
-    file_size = os.path.getsize(filepath) / 1024  # KB
-    # print(f"[DEBUG] File size: {file_size:.1f} KB")  # Commented out for reduced verbosity
-
-    if file_size > 100:
-        window.status_bar.showMessage(f"Importing large file ({file_size:.1f}KB): {filepath}")
-        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-    else:
-        window.status_bar.showMessage(f"Importing: {filepath}")
-
-    QApplication.processEvents()
-
-    load_start_time = time.time()
-
+    loaded = 0
+    last_error = None
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
     try:
-        loader = ParallelFileLoader(parallel_threshold_kb=100.0, use_parallel=False)
-
-        ext = filepath.lower().rsplit('.', 1)[-1] if '.' in filepath else ''
-        # print(f"[DEBUG] File extension: {ext}")  # Commented out for reduced verbosity
-
-        with get_profiler().time_operation("file_load"):
-            mol = loader.load_file(filepath)
-
-        load_time = time.time() - load_start_time
-        # print(f"[DEBUG] File loaded in {load_time:.3f}s")  # Commented out for reduced verbosity
-
-        if mol is None:
-            raise ValueError("Failed to parse molecule - no atoms loaded")
-
-        mol.properties['source_format'] = ext if ext in ('pdb', 'ent') else 'unknown'
-
-        # print(f"[DEBUG] Molecule loaded: {len(mol.atoms)} atoms, {len(mol.bonds)} bonds")  # Commented out for reduced verbosity
-        # print(f"[DEBUG] Molecule name: {mol.name}")  # Commented out for reduced verbosity
-        # print(f"[DEBUG] Properties: {mol.properties}")  # Commented out for reduced verbosity
-
-        num_atoms = len(mol.atoms)
-        if num_atoms <= 150:
-            # print("[DEBUG] Assigning hybridization...")  # Commented out for reduced verbosity
+        for fp in filepaths:
+            window.status_bar.showMessage(f"Importing: {fp}")
+            QApplication.processEvents()
             try:
-                mol.assign_hybridization()
-                mol.assign_sybyl_types()
-
-                from src.features.smiles_parser.rules.aromaticity import perceive_aromaticity
-                perceive_aromaticity(mol)
+                mol = _load_structure(fp)
+                if mol is None:
+                    continue
+                name = os.path.splitext(os.path.basename(fp))[0]
+                ext = fp.lower().rsplit('.', 1)[-1] if '.' in fp else 'unknown'
+                window._add_molecule_object(
+                    mol, name=name, source_path=fp, source_format=ext)
+                add_recent_file(window, fp)
+                loaded += 1
             except Exception as e:
-                # print(f"[DEBUG] Molecule typing/aromaticity failed: {e}")  # Commented out for reduced verbosity
-                pass
+                last_error = e
+    finally:
+        QApplication.restoreOverrideCursor()
 
-            # print("[DEBUG] Computing charges...")  # Commented out for reduced verbosity
-            has_charges = any(a.partial_charge != 0 for a in mol.atoms)
-            if not has_charges:
-                try:
-                    from src.features.cheminformatics.electrostatics.gasteiger import compute_gasteiger_charges
-                    compute_gasteiger_charges(mol)
-                except Exception as e:
-                    # print(f"[DEBUG] charge computation failed: {e}")  # Commented out for reduced verbosity
-                    pass
-        else:
-            # print("[DEBUG] Skipping hybridization/charges for large structure to ensure fast load speed")  # Commented out for reduced verbosity
-            pass
-
-        # print("[DEBUG] Calling _set_molecule...")  # Commented out for reduced verbosity
-        window._set_molecule(mol)
-
-        is_protein = mol.properties.get('is_protein', False)
-        info = f"Imported: {mol.name or filepath} -- {len(mol.atoms)} atoms, {len(mol.bonds)} bonds"
+    if loaded == 0 and last_error is not None:
+        window.status_bar.showMessage(f"Import error: {last_error}")
+        QMessageBox.critical(window, "Import Error",
+                             f"Failed to import file:\n\n{last_error}")
+    elif loaded == 1:
+        mol = window.molecule
+        is_protein = mol.properties.get('is_protein', False) if mol else False
+        info = f"Imported {filepaths[-1]} -- {len(mol.atoms)} atoms, {len(mol.bonds)} bonds"
         if is_protein:
             info += " [PROTEIN]"
         window.status_bar.showMessage(info)
-        add_recent_file(window, filepath)
+    else:
+        window.status_bar.showMessage(f"Imported {loaded} structures")
 
-    except Exception as e:
-        window.status_bar.showMessage(f"Import error: {e}")
-        QMessageBox.critical(window, "Import Error",
-                            f"Failed to import file:\n\n{e}")
-    finally:
-        QApplication.restoreOverrideCursor()
+
+def _load_structure(filepath):
+    """Load and lightly process a single structure file. Returns a Molecule."""
+    loader = ParallelFileLoader(parallel_threshold_kb=100.0, use_parallel=False)
+    ext = filepath.lower().rsplit('.', 1)[-1] if '.' in filepath else ''
+
+    with get_profiler().time_operation("file_load"):
+        mol = loader.load_file(filepath)
+
+    if mol is None:
+        raise ValueError("Failed to parse molecule - no atoms loaded")
+
+    mol.properties['source_format'] = ext if ext in ('pdb', 'ent') else 'unknown'
+
+    num_atoms = len(mol.atoms)
+    if num_atoms <= 150:
+        try:
+            mol.assign_hybridization()
+            mol.assign_sybyl_types()
+            from src.features.smiles_parser.rules.aromaticity import perceive_aromaticity
+            perceive_aromaticity(mol)
+        except Exception:
+            pass
+
+        has_charges = any(a.partial_charge != 0 for a in mol.atoms)
+        if not has_charges:
+            try:
+                from src.features.cheminformatics.electrostatics.gasteiger import (
+                    compute_gasteiger_charges)
+                compute_gasteiger_charges(mol)
+            except Exception:
+                pass
+
+    return mol
 
 
 # ── Export ────────────────────────────────────────────────────────
@@ -491,10 +489,12 @@ def handle_drag_enter(window, event):
 
 def handle_drop(window, event):
     urls = event.mimeData().urls()
-    if urls and urls[0].isLocalFile():
-        filepath = urls[0].toLocalFile()
-        ext = filepath.lower()
-        if ext.endswith('.smi'):
+    files = [u.toLocalFile() for u in urls if u.isLocalFile()]
+    if not files:
+        return
+
+    for filepath in files:
+        if filepath.lower().endswith('.smi'):
             try:
                 with open(filepath, 'r') as f:
                     smiles = f.read().strip().split()[0]
@@ -504,8 +504,9 @@ def handle_drop(window, event):
             except Exception as e:
                 window.status_bar.showMessage(f"Error reading SMILES: {e}")
         else:
+            # Each structure file is added as its own object in the scene.
             window._import_structure_file(filepath)
-        event.acceptProposedAction()
+    event.acceptProposedAction()
 
 
 # ── Recent Files ─────────────────────────────────────────────────

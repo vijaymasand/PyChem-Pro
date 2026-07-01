@@ -17,6 +17,8 @@ from src.shared.ui.theme import (
     save_theme_preference, theme_signals, current_mode,
 )
 from src.features.control_panel.ui.input_panel import InputPanel
+from src.features.control_panel.ui.object_panel import ObjectPanel
+from src.app.molecule_scene import MoleculeScene
 from src.app.enhanced_plugin_interface import EnhancedPluginManagerWidget
 from src.plugins.enhanced_plugin_manager import EnhancedPluginManager
 from src.plugins.plugin_config import PluginConfigManager
@@ -106,7 +108,13 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        # Multi-object scene. ``self.molecule`` always mirrors the active
+        # object so every existing single-molecule code path keeps working.
+        self.scene = MoleculeScene()
         self.molecule = None
+        # Overlay bookkeeping (merged display molecule <-> source objects).
+        self._scene_atom_origin = {}     # merged_idx -> (obj_id, local_idx)
+        self._scene_object_ranges = {}   # obj_id -> (start, end)
         self._worker = None
         self._thread = None
         self._undo_stack = []       # Molecule.clone() snapshots for Ctrl+Z (max 10)
@@ -116,7 +124,9 @@ class MainWindow(QMainWindow):
         self.sketcher_window = None
 
         self.setWindowTitle("PyChem -- Molecular Viewer and Cheminformatics Software")
-        self.setMinimumSize(1100, 700)
+        # A smaller minimum keeps the window usable on compact/laptop displays;
+        # the splitters let the panels adapt to the available space.
+        self.setMinimumSize(900, 600)
         self.resize(1280, 800)
         self.setAcceptDrops(True)
 
@@ -271,7 +281,21 @@ class MainWindow(QMainWindow):
         # the first paint does not clip the sidebar before the fixed
         # width is honoured on the second layout pass.
         self.input_panel = InputPanel()
-        h_splitter.addWidget(self.input_panel)
+
+        # Left column: controls on top, PyMOL-style object list at the
+        # bottom, separated by a user-adjustable vertical splitter so the
+        # layout stays responsive on any screen size.
+        self.object_panel = ObjectPanel()
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
+        left_splitter.setHandleWidth(3)
+        left_splitter.addWidget(self.input_panel)
+        left_splitter.addWidget(self.object_panel)
+        left_splitter.setStretchFactor(0, 1)
+        left_splitter.setStretchFactor(1, 0)
+        left_splitter.setSizes([560, 220])
+        left_splitter.setCollapsible(0, False)
+        self._left_splitter = left_splitter
+        h_splitter.addWidget(left_splitter)
 
         # Tabbed viewer area (right).  Use ThemedTabWidget which
         # overrides paintEvent to fill the "orphan" strip beside the
@@ -627,6 +651,14 @@ class MainWindow(QMainWindow):
 
     def _set_molecule(self, molecule):
         _mol_ctrl.set_molecule(self, molecule)
+
+    def _add_molecule_object(self, molecule, name=None, source_path=None,
+                             source_format='unknown', make_active=True):
+        _mol_ctrl.add_molecule_object(self, molecule, name, source_path,
+                                      source_format, make_active)
+
+    def _refresh_scene(self, refit=False, reset_selection=False):
+        _mol_ctrl.refresh_scene(self, refit, reset_selection)
 
     def _delete_selected_atoms(self, atom_indices=None):
         _mol_ctrl.delete_selected_atoms(self, atom_indices)

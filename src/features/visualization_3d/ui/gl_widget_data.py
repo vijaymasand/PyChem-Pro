@@ -423,8 +423,10 @@ class GLDataMixin:
                     self._bond_is_backbone.append(is_backbone_bond)
                     
                     rs = getattr(a1, 'res_seq', -1)
-                    if rs == -1:
+                    if rs is None or rs == -1:
                         rs = getattr(a2, 'res_seq', -1)
+                    if rs is None:
+                        rs = -1   # ligand/non-protein atoms carry no res_seq
                     self._bond_res_seq.append(rs)
 
         self._ligand_bond_start = len(prot_starts) * 6
