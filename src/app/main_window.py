@@ -34,6 +34,7 @@ from src.app import file_operations as _file_ops
 from src.app import chemistry_actions as _chem
 from src.app import viewer_coordinator as _viewer
 from src.app import molecule_controller as _mol_ctrl
+from src.app import alignment_actions as _align
 
 
 class ThemedTabWidget(QTabWidget):
@@ -861,6 +862,9 @@ class MainWindow(QMainWindow):
 
     def _perceive_aromaticity_action(self):
         _chem.perceive_aromaticity_action(self)
+
+    def _align_visible_to_active(self):
+        _align.align_visible_to_active(self)
 
     def _generate_smiles(self):
         _chem.generate_smiles(self)

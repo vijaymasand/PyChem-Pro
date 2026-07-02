@@ -7,6 +7,8 @@ No PySide6 dependency required for this package.
 from pychem.api import (
     load, parse_smiles, generate_3d, optimize, descriptors,
     compute_charges, add_hydrogens,
+    # structural alignment
+    align, align_many, rmsd,
     # mmCIF / PDBx
     read_mmcif, read_mmcif_string, read_mmcif_models,
     write_mmcif, export,
@@ -22,6 +24,7 @@ __all__ = [
     'Molecule', 'Atom', 'Bond',
     'load', 'parse_smiles', 'generate_3d', 'optimize', 'descriptors',
     'compute_charges', 'add_hydrogens',
+    'align', 'align_many', 'rmsd',
     'read_mmcif', 'read_mmcif_string', 'read_mmcif_models',
     'write_mmcif', 'export',
     'pydes',

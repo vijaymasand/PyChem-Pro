@@ -16,6 +16,7 @@ This function:
 from __future__ import annotations
 from src.core.domain.models.molecule import Molecule
 from src.services.forcefield.parameters import get_bci, get_pbci
+from src.services.forcefield._engine.bond_types import mmff_bond_type_index
 
 
 def assign_bci_charges(mol: Molecule) -> None:
@@ -24,14 +25,21 @@ def assign_bci_charges(mol: Molecule) -> None:
     Pre: mol.atoms have mmff_type set (call AtomTyper.type_atoms first).
     Post: every atom has a partial_charge consistent with MMFF94 BCI.
     """
-    # Step 1: initialize from formal charge x fcadj.
+    # Step 1: initialize q0 from the atom's formal charge.
+    #
+    # The MMFF94 charge model conserves total charge: Σq must equal the net
+    # molecular charge.  The legacy code used ``formal_charge * fcadj`` for
+    # q0, which silently *dropped* net charge — e.g. a quaternary ammonium
+    # N+ (type 34) has fcadj = 0, so its +1 vanished, and neutral dipolar
+    # groups (nitro, N-oxide, sulfoxide) summed to a spurious non-zero total.
+    # Using the formal charge directly conserves charge and is identical
+    # (0) for the common all-neutral case, so neutral molecules are
+    # unaffected while ions and zwitterions become correct.  (MMFF's
+    # fractional formal-charge *sharing* over symmetry-equivalent terminal
+    # atoms — e.g. −0.5/−0.5 on carboxylate O — is a further refinement not
+    # attempted here; the total is correct regardless.)
     for a in mol.atoms:
-        fcadj = 0.0
-        if a.mmff_type > 0:
-            pbci_info = get_pbci(a.mmff_type)
-            if pbci_info is not None:
-                fcadj = pbci_info[1]
-        a.partial_charge = float(a.formal_charge) * fcadj
+        a.partial_charge = float(a.formal_charge)
 
     # Step 2: walk bonds and apply BCI / PBCI fallback.
     for bond in mol.bonds:
@@ -41,13 +49,25 @@ def assign_bci_charges(mol: Molecule) -> None:
         if ti == 0 or tj == 0:
             continue  # untyped atom — skip
 
-        # bond_type code for the lookup. For MMFF94 the bond type is
-        # 0 (single, non-aromatic, non-conjugated) or 1 (aromatic / between
-        # sp2 atoms). We use 0 as a reasonable default for Phase 1.
-        bond_type = 0
-
-        w = get_bci(ti, tj, bond_type)
-        if w is None:
+        # Use the true MMFF94 bond-type index (1 for delocalised single
+        # bonds — biphenyl/butadiene/styrene — which carry their own charge
+        # increments).  Fall back to the type-0 increment when the table has
+        # no type-1 entry, so this can never do worse than the legacy code.
+        bt = mmff_bond_type_index(mol, bond)
+        w = get_bci(ti, tj, bt)
+        if w is None and bt != 0:
+            w = get_bci(ti, tj, 0)
+        if w is not None:
+            # MMFFCHG stores the increment for the (i,j) record such that the
+            # type-i atom gains -w and the type-j atom gains +w — e.g. the
+            # (bt=0, 5, 37, -0.15) H–C(aromatic) entry must yield H=+0.15,
+            # C=-0.15 (benzene reference).  That is the *opposite* sign to the
+            # ``ai += w`` apply used below (and to the pbci fallback, which is
+            # correct), so negate the tabulated value.  Without this every
+            # table-BCI bond came out reversed — aromatic carbons appeared
+            # positive with their hydrogens negative.
+            w = -w
+        else:
             # Fallback: pbci(i) - pbci(j) — matches Jmol's ForceFieldMMFF.java
             # convention where dq is added to atom_i and subtracted from atom_j.
             pi = get_pbci(ti)

@@ -344,6 +344,14 @@ def _build_applications_menu(window, menu_bar):
     window.docking_pose_action.triggered.connect(window._open_docking_pose_view)
     applications_menu.addAction(window.docking_pose_action)
 
+    window.align_action = QAction("&Align Visible → Active Object", window)
+    window.align_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+    window.align_action.setToolTip(
+        "Superimpose every other visible structure onto the active object "
+        "(Kabsch fit; proteins align by Cα sequence)")
+    window.align_action.triggered.connect(window._align_visible_to_active)
+    applications_menu.addAction(window.align_action)
+
     applications_menu.addSeparator()
 
     find_substructure_action = QAction("Find &Substructure...", window)

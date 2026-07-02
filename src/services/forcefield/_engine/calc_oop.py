@@ -95,69 +95,55 @@ def _wilson_angles(coords, idx_i, idx_j, idx_k, idx_l):
     return np.arcsin(sin_chi)
 
 
-def _wilson_angle_scalar(ci, cj, ck, cl):
-    """Scalar version of Wilson angle for one (i, j, k, l) tuple of coords (3,)."""
+def _wilson_from_coords(ci, cj, ck, cl):
+    """Wilson angle (radians) from per-row coordinate arrays, each shape (N, 3).
+
+    Identical maths to :func:`_wilson_angles` but takes the four atom positions
+    directly rather than via index arrays, so callers can perturb a per-row copy
+    without disturbing the shared global coordinates.
+    """
     vi = ci - cj
     vk = ck - cj
     vl = cl - cj
     normal = np.cross(vk, vl)
-    n_norm = np.linalg.norm(normal) + _EPS
-    n_hat = normal / n_norm
-    vi_norm = np.linalg.norm(vi) + _EPS
-    vi_hat = vi / vi_norm
-    sin_chi = float(np.dot(vi_hat, n_hat))
-    if sin_chi > 1.0:
-        sin_chi = 1.0
-    elif sin_chi < -1.0:
-        sin_chi = -1.0
-    return float(np.arcsin(sin_chi))
+    n_hat = normal / (np.linalg.norm(normal, axis=1) + _EPS)[:, None]
+    vi_hat = vi / (np.linalg.norm(vi, axis=1) + _EPS)[:, None]
+    sin_chi = np.clip(np.einsum("ij,ij->i", vi_hat, n_hat), -1.0, 1.0)
+    return np.arcsin(sin_chi)
 
 
 def _wilson_angles_and_grad(coords, idx_i, idx_j, idx_k, idx_l):
     """Return (chi_rad, dchi/dx_i, dchi/dx_j, dchi/dx_k, dchi/dx_l).
 
-    Per-row finite-difference: for each row and each of the 4 atom positions
-    and each Cartesian dimension, perturb ONLY that atom in ONLY this row's
-    context, recompute chi for this row, take central difference.
-
-    This is correct even when multiple rows share atoms.
+    Vectorized central finite-difference: for each of the 4 atom slots and 3
+    Cartesian directions, perturb that slot's per-row coordinates for ALL rows
+    at once and recompute chi. This is numerically identical to a per-row loop
+    (each row owns its own slot in the (N,3) arrays, so shared atoms don't leak
+    between rows) but replaces 24*N scalar Wilson-angle evaluations with 24
+    vectorized ones — the dominant per-iteration cost for molecules rich in
+    sp2/aromatic centers.
     """
-    chi = _wilson_angles(coords, idx_i, idx_j, idx_k, idx_l)
-    N = chi.shape[0]
+    # Per-row copies (independent even when an atom appears in several rows).
+    ci = coords[idx_i].astype(np.float64, copy=True)
+    cj = coords[idx_j].astype(np.float64, copy=True)
+    ck = coords[idx_k].astype(np.float64, copy=True)
+    cl = coords[idx_l].astype(np.float64, copy=True)
+
+    chi = _wilson_from_coords(ci, cj, ck, cl)
     eps = 1e-6
     inv_2eps = 1.0 / (2.0 * eps)
 
-    g_i = np.zeros((N, 3), dtype=np.float64)
-    g_j = np.zeros((N, 3), dtype=np.float64)
-    g_k = np.zeros((N, 3), dtype=np.float64)
-    g_l = np.zeros((N, 3), dtype=np.float64)
-
-    for row in range(N):
-        ai = idx_i[row]; aj = idx_j[row]; ak = idx_k[row]; al = idx_l[row]
-        ci = coords[ai].copy()
-        cj = coords[aj].copy()
-        ck = coords[ak].copy()
-        cl = coords[al].copy()
+    grads = []
+    for base in (ci, cj, ck, cl):
+        g = np.zeros_like(base)
         for d in range(3):
-            # dchi/dx_i
-            ci_p = ci.copy(); ci_p[d] += eps
-            ci_m = ci.copy(); ci_m[d] -= eps
-            g_i[row, d] = (_wilson_angle_scalar(ci_p, cj, ck, cl)
-                           - _wilson_angle_scalar(ci_m, cj, ck, cl)) * inv_2eps
-            # dchi/dx_j (center)
-            cj_p = cj.copy(); cj_p[d] += eps
-            cj_m = cj.copy(); cj_m[d] -= eps
-            g_j[row, d] = (_wilson_angle_scalar(ci, cj_p, ck, cl)
-                           - _wilson_angle_scalar(ci, cj_m, ck, cl)) * inv_2eps
-            # dchi/dx_k
-            ck_p = ck.copy(); ck_p[d] += eps
-            ck_m = ck.copy(); ck_m[d] -= eps
-            g_k[row, d] = (_wilson_angle_scalar(ci, cj, ck_p, cl)
-                           - _wilson_angle_scalar(ci, cj, ck_m, cl)) * inv_2eps
-            # dchi/dx_l
-            cl_p = cl.copy(); cl_p[d] += eps
-            cl_m = cl.copy(); cl_m[d] -= eps
-            g_l[row, d] = (_wilson_angle_scalar(ci, cj, ck, cl_p)
-                           - _wilson_angle_scalar(ci, cj, ck, cl_m)) * inv_2eps
+            orig = base[:, d].copy()
+            base[:, d] = orig + eps
+            chi_p = _wilson_from_coords(ci, cj, ck, cl)
+            base[:, d] = orig - eps
+            chi_m = _wilson_from_coords(ci, cj, ck, cl)
+            base[:, d] = orig
+            g[:, d] = (chi_p - chi_m) * inv_2eps
+        grads.append(g)
 
-    return chi, g_i, g_j, g_k, g_l
+    return chi, grads[0], grads[1], grads[2], grads[3]

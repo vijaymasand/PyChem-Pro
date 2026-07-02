@@ -271,7 +271,14 @@ def get_oop_params(type_i: int, type_j: int, type_k: int, type_l: int) -> Option
     """Look up MMFF94 out-of-plane force constant koop. j is the center."""
     table = _load()["oop"]
     outers = tuple(sorted([type_i, type_k, type_l]))
-    return table.get((outers[0], type_j, outers[1], outers[2]))
+    koop = table.get((outers[0], type_j, outers[1], outers[2]))
+    if koop is None:
+        # MMFF94 uses atom type 0 as an outer-atom wildcard, e.g. the
+        # (0, 37, 0, 0) entry keeps every aromatic carbon planar even when the
+        # specific outer-type combination is not tabulated.  The center type_j
+        # is always matched exactly.
+        koop = table.get((0, type_j, 0, 0))
+    return koop
 
 
 # ---------------------------------------------------------------------------

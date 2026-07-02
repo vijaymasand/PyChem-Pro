@@ -72,6 +72,7 @@ This makes PyChem-Pro:
 - Molecular descriptor calculator (constitutional, topological, electronic, geometric, hybrid, quantum, fingerprints)
 - Morgan (ECFP) and topological fingerprints
 - Center of Mass and Shrake-Rupley SASA
+- **Structural alignment / superposition** — Kabsch fit with iterative outlier rejection; atom correspondence by index, element, or protein Cα sequence (Needleman-Wunsch); RMSD reporting (pure NumPy)
 
 ### Visualization
 - Hardware-aware software 3D rendering (QPainter with gradient sphere shading)
@@ -361,6 +362,16 @@ h_count = pychem.add_hydrogens(mol)
 
 # Compute MMFF94 BCI charges only
 pychem.compute_charges(mol)
+
+# Structural alignment / superposition (accepts Molecule objects or file paths)
+ref  = pychem.load("ref.pdb")
+pose = pychem.load("model2.pdb")
+result = pychem.align(pose, ref)          # moves `pose` onto `ref` in place
+print(f"RMSD = {result.rmsd:.3f} Å over {result.n_aligned} atoms ({result.method})")
+# auto: two proteins align by Cα sequence; small molecules pair by atom index
+
+# RMSD without moving anything (optionally best-fit first)
+d = pychem.rmsd("poseA.mol2", "poseB.mol2", superpose=True)
 ```
 
 ### Available API functions
@@ -374,6 +385,13 @@ pychem.add_hydrogens(mol: Molecule) -> int
 pychem.compute_charges(mol: Molecule) -> None
 pychem.descriptors(mol: Molecule, names: list[str] | None = None) -> dict
 pychem.descriptors_batch(mols: list[Molecule], names: list[str] | None = None) -> list[dict]
+
+# Structural alignment (mobile/reference may be a Molecule or a file path)
+pychem.align(mobile, reference, *, method='auto', selection='auto',
+             cycles=5, cutoff=2.0, weights=None, transform=True) -> AlignmentResult
+pychem.align_many(mobiles: list, reference, **kwargs) -> list[AlignmentResult]
+pychem.rmsd(mol_a, mol_b, *, method='auto', selection='auto',
+            superpose=False) -> float
 ```
 
 ---
