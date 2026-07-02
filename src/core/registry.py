@@ -9,6 +9,7 @@ from src.core.events import EventBus
 from src.services.forcefield.mmff94_service import MMFF94Service
 from src.services.descriptors.descriptor_service import DescriptorService
 from src.services.loading.loader_service import LoaderService
+from src.services.alignment.align_service import AlignmentService
 
 
 class ServiceRegistry:
@@ -27,6 +28,7 @@ class ServiceRegistry:
         self.forcefield = MMFF94Service(self.executor)
         self.descriptors = DescriptorService(self.executor)
         self.loader = LoaderService(self.executor)
+        self.alignment = AlignmentService(loader=self.loader)
         # Services added in later phases:
         # self.coord_gen = CoordinateGeneratorService(self.executor)
         # self.renderer_factory = RendererFactory()

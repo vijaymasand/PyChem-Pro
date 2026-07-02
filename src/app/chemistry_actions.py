@@ -37,8 +37,11 @@ def optimize_geometry(window, checked=False, method=None):
             from pychem._bridge import get_registry
             service = get_registry().forcefield
             pre_atoms = len(window.molecule.atoms)
+            # L-BFGS converges to a lower-energy (better) minimum in far
+            # fewer effective steps than steepest descent, which typically
+            # never converges within the iteration cap.
             result = service.optimize_geometry(
-                window.molecule, max_iters=500, method='steepest_descent'
+                window.molecule, max_iters=500, method='lbfgs'
             )
             added_h = len(window.molecule.atoms) - pre_atoms
             window._refresh_scene()
@@ -87,13 +90,20 @@ def compute_charges(window, checked=False, method=None):
             else:
                 window.status_bar.showMessage("AM1 charge calculation failed")
         elif "MMFF94" in method:
-            # Use the new MMFF94Service BCI charge assignment
+            # MMFF94 BCI charges are defined on the hydrogen-complete, typed
+            # molecule, so assign_charges adds explicit H first — refresh the
+            # scene so any newly added hydrogens appear in the 3D overlay.
             from pychem._bridge import get_registry
             try:
+                pre_atoms = len(window.molecule.atoms)
                 get_registry().forcefield.assign_charges(window.molecule)
+                added_h = len(window.molecule.atoms) - pre_atoms
+                window._refresh_scene()
                 window.input_panel.update_molecule_info(window.molecule)
-                window.viewer_3d.update()
-                window.status_bar.showMessage("MMFF94 partial charges assigned successfully")
+                msg = "MMFF94 partial charges assigned successfully"
+                if added_h:
+                    msg += f" ({added_h} H added)"
+                window.status_bar.showMessage(msg)
             except Exception as e:
                 window.status_bar.showMessage(f"MMFF94 charge calculation failed: {e}")
         else:

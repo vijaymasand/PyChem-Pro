@@ -77,6 +77,58 @@ def descriptors_batch(molecules, names=None) -> list:
     return get_registry().descriptors.calculate_batch(molecules, descriptor_names=names)
 
 
+# ── Structural alignment ─────────────────────────────────────────────────────
+
+def align(mobile, reference, *, method='auto', selection='auto',
+          cycles=5, cutoff=2.0, weights=None, transform=True):
+    """Superimpose *mobile* onto *reference* (Kabsch fit + outlier rejection).
+
+    Both arguments may be :class:`Molecule` objects or file paths (PDB, MOL,
+    MOL2, SDF, CIF/mmCIF) — paths are loaded automatically.  By default the
+    mobile molecule's coordinates are moved in place onto the reference.
+
+    Args:
+        mobile:    Molecule (or path) to be moved.
+        reference: Molecule (or path) held fixed.
+        method:    ``'auto'`` | ``'index'`` | ``'element'`` | ``'sequence'``.
+                   ``'auto'`` uses Cα sequence alignment for two proteins,
+                   otherwise pairs atoms by index.
+        selection: ``'auto'`` | ``'all'`` | ``'heavy'`` | ``'ca'`` | ``'backbone'``.
+        cycles:    Outlier-rejection cycles (0 → a single Kabsch fit).
+        cutoff:    Reject a pair when ``distance / RMSD > cutoff``.
+        weights:   Optional per-pair weights (forces one weighted Kabsch fit).
+        transform: If True (default), move *mobile* in place.
+
+    Returns:
+        ``AlignmentResult`` with ``rmsd``, ``n_aligned``, ``rotation``,
+        ``translation`` and the final atom ``pairs``.
+    """
+    from pychem._bridge import get_registry
+    return get_registry().alignment.align(
+        mobile, reference, method=method, selection=selection,
+        cycles=cycles, cutoff=cutoff, weights=weights, transform=transform)
+
+
+def align_many(mobiles, reference, **kwargs):
+    """Align each molecule in *mobiles* onto *reference*. Returns a list of results."""
+    from pychem._bridge import get_registry
+    return get_registry().alignment.align_many(mobiles, reference, **kwargs)
+
+
+def rmsd(mol_a, mol_b, *, method='auto', selection='auto',
+         superpose=False, cycles=5, cutoff=2.0) -> float:
+    """RMSD between two molecules over their atom correspondence.
+
+    With ``superpose=False`` (default) the RMSD is measured on the current
+    coordinates; with ``superpose=True`` an optimal fit is computed first
+    (neither molecule is moved).
+    """
+    from pychem._bridge import get_registry
+    return get_registry().alignment.rmsd(
+        mol_a, mol_b, method=method, selection=selection,
+        superpose=superpose, cycles=cycles, cutoff=cutoff)
+
+
 # ── mmCIF / PDBx specific functions ──────────────────────────────────────────
 
 def read_mmcif(path: str, model: int = 1) -> "Molecule":

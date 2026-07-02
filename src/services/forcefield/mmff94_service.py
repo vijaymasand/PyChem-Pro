@@ -66,7 +66,24 @@ class MMFF94Service:
         self.atom_typer.type_atoms(mol)
 
     def assign_charges(self, mol: Molecule) -> None:
-        assign_bci_charges(mol)
+        """Assign MMFF94 BCI partial charges in place.
+
+        MMFF94 BCI charges are defined on the *hydrogen-complete, MMFF-typed*
+        molecule, so the molecule must be fully prepared first — otherwise a
+        freshly parsed/loaded structure (no explicit H, ``mmff_type == 0`` on
+        every atom) has every bond skipped and comes out with all-zero charges.
+
+        This runs the same preparation as :meth:`optimize_geometry`: seed 3-D
+        coordinates if missing (needed only so hydrogens can be *placed*; BCI
+        charges themselves are geometry-independent), then add explicit
+        hydrogens, perceive aromaticity, and assign atom types before the BCI
+        pass.  ``add_hydrogens`` is idempotent, so calling this after an
+        optimization simply re-derives the (identical) charges without adding
+        duplicate atoms; and for an already-loaded 3-D structure the coordinate
+        seeding is a no-op that leaves the geometry untouched.
+        """
+        self._seed_coords_from_2d(mol)
+        self._setup(mol)
 
     def compute_energy(self, mol: Molecule) -> float:
         self._setup(mol)
@@ -80,7 +97,13 @@ class MMFF94Service:
         # 0. Seed 3D coordinates from 2D/SMILES if missing (existing logic).
         self._seed_coords_from_2d(mol)
 
-        # 1. Set up: hybridization → aromaticity → H's → types → charges.
+        # 1. Set up: hybridization → aromaticity → add H → types → charges.
+        #    Hydrogens are added FIRST (a bare heavy-atom skeleton has the
+        #    wrong valence/geometry) and charges are assigned here, BEFORE the
+        #    minimisation, because the MMFF94 energy includes an electrostatic
+        #    term (es_qq = q_i·q_j) that the optimizer needs.  BCI charges are
+        #    geometry-independent, so assigning them on the seeded start
+        #    geometry gives exactly the charges of the final optimised one.
         self._setup(mol)
 
         # 2. Build interaction arrays for this molecule.

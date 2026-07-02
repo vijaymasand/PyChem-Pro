@@ -86,10 +86,12 @@ class LBFGS:
         y_list: List[np.ndarray] = []
         rho_list: List[float] = []
         traj = [float(e)]
+        plateau = 0
 
         for k in range(max_iters):
             if _rms(g.reshape(shape)) < convergence:
                 return x.reshape(shape), traj, True, k
+            e_prev = e
 
             # Two-loop recursion
             q = g.copy()
@@ -150,5 +152,18 @@ class LBFGS:
 
             x, e, g = new_x, new_e, new_g
             traj.append(float(e))
+
+            # Energy-plateau convergence: L-BFGS decreases E monotonically, so a
+            # negligible relative change sustained over several steps means the
+            # minimum is reached even when the RMS gradient is still slowly
+            # relaxing soft (floppy) modes — common for large flexible molecules,
+            # which would otherwise burn every iteration and report "not
+            # converged" despite an already-optimal geometry.
+            if abs(e_prev - e) < 1e-6 * (1.0 + abs(e)):
+                plateau += 1
+                if plateau >= 3:
+                    return x.reshape(shape), traj, True, k + 1
+            else:
+                plateau = 0
 
         return x.reshape(shape), traj, False, max_iters

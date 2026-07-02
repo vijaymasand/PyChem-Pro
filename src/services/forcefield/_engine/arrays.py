@@ -70,6 +70,7 @@ from src.services.forcefield.parameters import (
     get_torsion_params, get_oop_params, get_vdw_params,
 )
 from src.services.forcefield._engine.exclusions import build_exclusions
+from src.services.forcefield._engine.bond_types import mmff_bond_type_index
 
 # MMFF94 OOP-eligible classes (Jmol's CalculationsMMFF.isInvertible whitelist).
 _OOP_ELIGIBLE_CLASSES = frozenset({
@@ -104,7 +105,12 @@ class ArraysBuilder:
                 # Use class-level fallback parameters if type is missing
                 params = (4.0, 1.50)  # default
             else:
-                params = get_bond_params(ti, tj, 0)
+                # Delocalised single bonds (bond type 1) have their own
+                # stretch parameters; fall back to type 0 if none exist.
+                bt = mmff_bond_type_index(mol, b)
+                params = get_bond_params(ti, tj, bt)
+                if params is None and bt != 0:
+                    params = get_bond_params(ti, tj, 0)
                 if params is None:
                     # Try class fallback
                     ci = mol.atoms[b.begin_atom_idx].mmff_class
@@ -215,6 +221,11 @@ class ArraysBuilder:
                             cl = mol.atoms[l_idx].mmff_class
                             tp = get_torsion_params(ci, cj, ck, cl, 0)
                         v1, v2, v3 = tp if tp is not None else (0.0, 0.0, 0.0)
+                    # A torsion with V1=V2=V3=0 contributes zero energy and
+                    # zero gradient — skip it so it is not evaluated on every
+                    # optimizer step (heteroaromatics are mostly zero here).
+                    if v1 == 0.0 and v2 == 0.0 and v3 == 0.0:
+                        continue
                     tor_data.append((i_idx, j, k, l_idx, v1, v2, v3))
 
         if tor_data:
@@ -245,7 +256,15 @@ class ArraysBuilder:
             ]
             tc = atom.mmff_type
             ts = [mol.atoms[n].mmff_type for n in neighbors]
-            koop = get_oop_params(tc, ts[0], ts[1], ts[2]) or 0.0
+            # get_oop_params takes the CENTRE as its 2nd argument (j) and the
+            # three outer types as args 1/3/4 — passing the centre first left
+            # every lookup querying the wrong centre, so sp2/aromatic atoms got
+            # no out-of-plane restraint and rings buckled during optimisation.
+            koop = get_oop_params(ts[0], tc, ts[1], ts[2]) or 0.0
+            # koop == 0 means no out-of-plane restraint — its energy and
+            # gradient are identically zero, so skip the three Wilson entries.
+            if koop == 0.0:
+                continue
             for tup in triples:
                 oop_data.append((tup[1], tup[0], tup[2], tup[3], koop))
 
