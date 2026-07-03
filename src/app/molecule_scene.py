@@ -19,6 +19,7 @@ preserving every existing single-molecule code path.
 """
 
 import copy
+import string
 
 from src.shared.qt_compat import QObject, Signal
 from src.core.domain.models.molecule import Molecule
@@ -27,6 +28,41 @@ from src.core.domain.models.molecule import Molecule
 # Representation strings the renderer honours *per atom* via custom_atom_modes.
 # Cartoon / ribbon / backbone are whole-chain modes and stay global.
 PER_ATOM_REPRESENTATIONS = ('ball_and_stick', 'spacefill', 'wireframe')
+
+# Pool of single-character chain IDs used to give each merged object its own
+# chain namespace (see build_overlay).  Falls back to multi-char IDs if a scene
+# somehow exhausts these 62 — harmless, since the merged molecule is display-only.
+_CHAIN_ID_POOL = string.ascii_uppercase + string.ascii_lowercase + string.digits
+
+
+def _looks_like_protein(mol) -> bool:
+    """True if the molecule has a protein backbone.
+
+    Prefers the loader's ``is_protein`` flag, but falls back to detecting
+    α-carbons directly (``pdb_name == 'CA'`` on a carbon atom).  The parallel
+    PDB loader used for large files doesn't set the flag, so relying on it alone
+    would make big proteins render as ball-and-stick instead of a cartoon.
+    """
+    if mol.properties.get('is_protein'):
+        return True
+    count = 0
+    for a in mol.atoms:
+        if (getattr(a, 'pdb_name', '') or '').strip() == 'CA' and a.symbol == 'C':
+            count += 1
+            if count >= 3:
+                return True
+    return False
+
+
+def _alloc_chain_id(used: set) -> str:
+    """Return a chain ID not present in *used* (without adding it)."""
+    for ch in _CHAIN_ID_POOL:
+        if ch not in used:
+            return ch
+    i = 1
+    while f"C{i}" in used:
+        i += 1
+    return f"C{i}"
 
 # PyMOL "color by chain" (cbc) inspired palette for the auto-colour option.
 AUTO_COLOR_PALETTE = [
@@ -207,6 +243,10 @@ class MoleculeScene(QObject):
         custom_modes = {}
         custom_colors = {}
         any_protein = False
+        # Chain IDs already claimed by earlier objects.  Each object gets its
+        # own chain namespace so two structures that share a PDB chain letter
+        # (e.g. both use chain 'A') are never fused by chain-based rendering.
+        used_chain_ids = set()
 
         # Merge the active object FIRST so its local atom indices equal the
         # merged indices — this keeps the active molecule (window.molecule)
@@ -227,12 +267,30 @@ class MoleculeScene(QObject):
             # marked as het-atoms so the renderers treat them as ligands — shown
             # over a protein cartoon, and kept out of protein-only code paths
             # (the GL packer assumes protein atoms carry an integer res_seq).
-            obj_is_protein = bool(mol.properties.get('is_protein'))
+            obj_is_protein = _looks_like_protein(mol)
+
+            # Remap this object's chain IDs onto a fresh, collision-free set so
+            # the cartoon tracer (which groups residues by chain_id) keeps each
+            # structure as its own chain instead of splicing them together.
+            chain_remap = {}
 
             for local_idx, atom in enumerate(mol.atoms):
                 na = copy.copy(atom)
                 if not obj_is_protein:
                     na.is_hetatm = True
+                orig_chain = getattr(atom, 'chain_id', None)
+                key = orig_chain if orig_chain is not None else ''
+                new_chain = chain_remap.get(key)
+                if new_chain is None:
+                    # Keep the original letter when it's still free (typical for
+                    # the first/active object); otherwise allocate a fresh one.
+                    if key and key not in used_chain_ids:
+                        new_chain = key
+                    else:
+                        new_chain = _alloc_chain_id(used_chain_ids)
+                    used_chain_ids.add(new_chain)
+                    chain_remap[key] = new_chain
+                na.chain_id = new_chain
                 merged_idx = merged.add_atom(na)
                 atom_origin[merged_idx] = (obj.id, local_idx)
 
@@ -257,7 +315,7 @@ class MoleculeScene(QObject):
                 for midx in range(start, end):
                     custom_colors[midx] = rgb
 
-            if mol.properties.get('is_protein'):
+            if obj_is_protein:
                 any_protein = True
 
         merged.end_bulk_load()
