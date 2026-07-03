@@ -35,9 +35,21 @@ class vertex( object):
     self.properties_ = {} # used to store intermediate properties such as distances etc.
     self.value = None  # used to store any object associated with the vertex
     self._neighbors = {} # set of all neighbors
+    # Stable, per-graph ordinal assigned by graph.add_vertex.  It is used as
+    # the hash so that Python ``set``/``frozenset`` operations over vertices
+    # (ring perception, path sorting, coordinate generation) iterate in the
+    # SAME order on every run.  Without it, the default id()-based hash made
+    # the 2D layout non-deterministic (a different, sometimes overlapping,
+    # depiction every time the same molecule was drawn).
+    self._ord = None
     self._clean_cache()
-    
-    
+
+
+  def __hash__( self):
+    o = self._ord
+    return o if o is not None else object.__hash__( self)
+
+
   def __str__( self):
     return ("vertex, value=%s, degree=%d, " % (str( self.value), self.get_degree()) )+str(self.properties_)
 
