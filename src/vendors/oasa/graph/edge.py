@@ -27,10 +27,20 @@ class edge:
   attrs_to_copy = ("disconnected",)
 
   def __init__( self, vs=[]):
+    # Stable, per-graph ordinal assigned by graph.add_edge; used as the hash so
+    # that ``set``/``frozenset`` operations over edges (OASA stores edges in a
+    # set and ring perception pops/iterates them) are deterministic across runs.
+    # See graph/vertex.py for the rationale — id()-based hashing made the 2D
+    # coordinate layout differ every time the same molecule was drawn.
+    self._ord = None
     self.vertices = set([])
     self.set_vertices( vs)
     self.properties_ = {}
     self.disconnected = False
+
+  def __hash__( self):
+    o = self._ord
+    return o if o is not None else object.__hash__( self)
 
   def __str__( self):
     return "edge between %s %s" % tuple( map( str, self.vertices))

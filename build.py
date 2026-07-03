@@ -46,6 +46,16 @@ def build(onefile: bool = True) -> None:
         "--include-package=pychem",
         "--include-package=pdbx",
         "--include-package=plugins",
+        # --include-package bundles only .py modules; the NON-code data files
+        # that live inside these packages (MMFF94 parameter tables at
+        # src/services/forcefield/data/*.txt, the Ramachandran KDE map at
+        # src/data/kde.dat, the OASA name/structure databases, …) must be
+        # requested explicitly.  Without this the frozen onefile app fails at
+        # runtime with e.g. "No such file or directory:
+        # …/onefile_xxx/src/services/forcefield/data/mmff94.par.txt".
+        "--include-package-data=src",
+        "--include-package-data=pychem",
+        "--include-package-data=pdbx",
         "--include-data-files=plugins/*.py=plugins/",
         "--include-data-dir=plugins=plugins",
         "--include-data-dir=assets=assets",
