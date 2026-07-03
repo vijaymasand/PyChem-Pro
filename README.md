@@ -14,8 +14,8 @@
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/vijaymasand)
 
 **Financial support/Sponsorship**
-🎉 PyChem-Pro Milestone Update!
-I am incredibly proud to share that PyChem-Pro has received its first official financial support via Buy Me a Coffee! One of the researchers from Yeshiva University, NY has contributed for PyChem-Pro. This funding will be directly reinvested into the software’s infrastructure-specifically for cloud-based GPU testing environments to optimize PyChem-Pro.
+🎉 Another PyChem-Pro Milestone Update!
+I am incredibly proud to share that PyChem-Pro has received its second official financial support from Dr. Asif Khan (Department of Pharmacy, State University of Maringà, Maringa, PR Brazil). 
 
 ---
 
