@@ -131,7 +131,16 @@ def parse_smiles(smiles, name="", use_bkchem_tokenizer=True):
         mol.bonds[bond_idx].bond_type = btype
 
     mol.assign_hybridization()
-    
+
+    # Repair the occasional OASA depiction where an acyclic substituent is drawn
+    # overlapping the rest of the molecule (deterministic, only accepts strict
+    # improvements — never worsens or reshapes a good layout).
+    try:
+        from src.features.layout_2d.methods.overlap_resolver import resolve_overlaps_2d
+        resolve_overlaps_2d(mol)
+    except Exception:
+        pass
+
     # Tag source for optimized 2D layout engine selection
     mol.properties['source'] = 'smiles'
 

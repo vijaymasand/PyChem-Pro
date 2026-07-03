@@ -106,6 +106,12 @@ class graph( object):
       v = self.create_vertex()
     if v not in self.vertices:
       self.vertices.append( v)
+      # Stable ordinal (used as the hash → deterministic set order).  Assign it
+      # only ONCE per object: OASA re-adds the SAME vertices to induced
+      # subgraphs, and mutating the hash of an object that already lives in
+      # another graph's sets would corrupt them.
+      if v._ord is None:
+        v._ord = len( self.vertices) - 1
     else:
       warnings.warn( "Added vertex is already present in graph %s" % str( v), UserWarning, 2)
       return None
@@ -127,6 +133,14 @@ class graph( object):
     v2 = self.vertices[ i2]
     if not e:
       e = self.create_edge()
+    # Assign the stable ordinal BEFORE the edge is hashed anywhere (added to
+    # self.edges — a set — and used as a neighbor-dict key below), else the set
+    # would store it under the old id()-hash and later lookups with the new
+    # hash would miss it.  Assign only ONCE: the same edge is re-added to
+    # induced subgraphs, and changing its hash mid-flight corrupts the sets
+    # that already hold it.
+    if e._ord is None:
+      e._ord = len( self.edges)
     e.set_vertices( (v1,v2))
     self.edges.add( e)
     v1.add_neighbor( v2, e)
