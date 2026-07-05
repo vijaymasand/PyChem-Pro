@@ -43,6 +43,28 @@ def _optimize_worker(args):
     return mol, result
 
 
+def _segment_crosses_triangle(p1, p2, v0, v1, v2) -> bool:
+    """Möller–Trumbore intersection of segment p1→p2 with triangle v0,v1,v2."""
+    d = p2 - p1
+    e1 = v1 - v0
+    e2 = v2 - v0
+    h = np.cross(d, e2)
+    a = float(e1 @ h)
+    if -1e-9 < a < 1e-9:
+        return False  # segment parallel to the triangle plane
+    f = 1.0 / a
+    s = p1 - v0
+    u = f * float(s @ h)
+    if u < 0.0 or u > 1.0:
+        return False
+    q = np.cross(s, e1)
+    v = f * float(d @ q)
+    if v < 0.0 or u + v > 1.0:
+        return False
+    t = f * float(e2 @ q)
+    return 1e-6 < t < 1.0 - 1e-6  # strictly inside the segment
+
+
 class MMFF94Service:
     """Vectorized MMFF94 force field service.
 
@@ -113,11 +135,26 @@ class MMFF94Service:
         # 3. Extract coordinates as a (N,3) float64 NumPy array.
         coords = self._coords(mol)
 
-        # 4. Pick optimizer.
+        # 4. Optimize.  A near-flat 2-D-seeded start can trap the local
+        #    optimizer in a *tangled* minimum — e.g. a substituent chain
+        #    threaded through a ring, seen as a bond passing through the ring
+        #    face.  Such a geometry carries a non-bonded clash and a high
+        #    (strained) energy, so we detect it and, only then, retry from
+        #    randomised 3-D starts and keep the lowest-energy untangled result.
+        #    Well-behaved molecules pass on the first try and pay nothing extra.
         opt_cls = {"lbfgs": LBFGS, "steepest_descent": SteepestDescent}.get(method, LBFGS)
-        coords_out, traj, converged, steps = opt_cls(engine.energy_and_gradient).run(
-            coords, max_iters=max_iters, convergence=convergence
-        )
+
+        def _run(c0):
+            return opt_cls(engine.energy_and_gradient).run(
+                c0, max_iters=max_iters, convergence=convergence)
+
+        coords_out, traj, converged, steps = _run(coords)
+        # Only a *tangled* result warrants the extra restarts — a clash-free
+        # geometry that merely hit the iteration cap (common for floppy
+        # molecules relaxing soft modes) is fine and pays nothing.
+        if self._bad_contacts(mol, coords_out) > 0:
+            coords_out, traj, converged, steps = self._reoptimize_untangled(
+                mol, coords, _run, (coords_out, traj, converged, steps))
 
         # 5. Write coords back to atoms.
         for i, atom in enumerate(mol.atoms):
@@ -173,6 +210,107 @@ class MMFF94Service:
             # 2D-seeded local minimum.
             c[:, 2] += np.random.RandomState(31).uniform(-0.1, 0.1, len(c))
         return c
+
+    # ─── Tangle detection & recovery ─────────────────────────────
+
+    _CLASH_DIST = 2.0   # non-bonded heavy-atom separation (Å) below which a
+                        # contact is a genuine clash (a threaded/overlapping
+                        # geometry), not a normal van-der-Waals contact.
+
+    def _excluded_pairs(self, mol):
+        """1-2 (bonded) and 1-3 (geminal) atom pairs — legitimately close."""
+        excl = set()
+        for b in mol.bonds:
+            i, j = b.begin_atom_idx, b.end_atom_idx
+            excl.add((i, j) if i < j else (j, i))
+        for i in range(len(mol.atoms)):
+            neigh = mol.get_neighbors(i)
+            for a in range(len(neigh)):
+                for b in range(a + 1, len(neigh)):
+                    x, y = neigh[a], neigh[b]
+                    excl.add((x, y) if x < y else (y, x))
+        return excl
+
+    def _bad_contacts(self, mol, coords) -> int:
+        """Number of non-bonded heavy-atom clashes plus bonds threading a ring.
+
+        A threaded ring (chain passing through the ring face) always produces
+        at least one such close contact, so this is a reliable, cheap signal
+        for "the optimizer landed in a tangled minimum".
+        """
+        sym = [a.symbol for a in mol.atoms]
+        heavy = [i for i in range(len(sym)) if sym[i] != 'H']
+        excl = self._excluded_pairs(mol)
+        thr2 = self._CLASH_DIST * self._CLASH_DIST
+        clashes = 0
+        for x in range(len(heavy)):
+            i = heavy[x]
+            ci = coords[i]
+            for y in range(x + 1, len(heavy)):
+                j = heavy[y]
+                if (i, j) in excl:
+                    continue
+                d = ci - coords[j]
+                if d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < thr2:
+                    clashes += 1
+        return clashes + self._ring_threads(mol, coords)
+
+    @staticmethod
+    def _ring_threads(mol, coords) -> int:
+        """Count bonds whose segment passes through a ring face.
+
+        Each ring is triangulated as a fan from its centroid and every
+        non-ring bond is tested against those triangles with a Möller–Trumbore
+        segment/triangle intersection.  This catches a chain threaded through a
+        ring at *any* angle (unlike a plane-crossing test, which misses a bond
+        lying nearly in the ring plane) and does not false-trigger on ordinary
+        substituents that merely sit next to the ring.
+        """
+        rings = mol.find_rings()
+        if not rings:
+            return 0
+        bonds = [(b.begin_atom_idx, b.end_atom_idx) for b in mol.bonds]
+        threads = 0
+        for ring in rings:
+            idx = list(ring)
+            pts = coords[idx]
+            c = pts.mean(axis=0)
+            rs = set(idx)
+            tris = [(c, pts[k], pts[(k + 1) % len(idx)]) for k in range(len(idx))]
+            for i, j in bonds:
+                if i in rs or j in rs:
+                    continue  # ring bonds and ring-attached bonds are legitimate
+                p1, p2 = coords[i], coords[j]
+                if any(_segment_crosses_triangle(p1, p2, v0, v1, v2)
+                       for (v0, v1, v2) in tris):
+                    threads += 1
+        return threads
+
+    def _reoptimize_untangled(self, mol, seed_coords, run_fn, best):
+        """Retry the minimisation from randomised 3-D starts, keeping the
+        lowest-energy, least-tangled result.
+
+        The kicks use fixed RNG seeds so the outcome is fully deterministic.
+        Selection is lexicographic — fewest bad contacts first, then lowest
+        energy — so an untangled geometry always beats a tangled one even if
+        the tangled one happens to score a slightly lower raw energy.
+        """
+        b_coords, b_traj, b_conv, b_steps = best
+        b_bad = self._bad_contacts(mol, b_coords)
+        b_e = b_traj[-1] if b_traj else float("inf")
+
+        for k in range(6):
+            if b_bad == 0:
+                break  # untangled — stop, even if soft modes are still relaxing
+            sigma = 0.8 + 0.4 * k  # escalate the 3-D spread each attempt
+            kick = np.random.RandomState(1009 + k).normal(0.0, sigma, seed_coords.shape)
+            co, tr, cv, st = run_fn(seed_coords + kick)
+            bad = self._bad_contacts(mol, co)
+            e = tr[-1] if tr else float("inf")
+            if (bad, e) < (b_bad, b_e):
+                b_coords, b_traj, b_conv, b_steps = co, tr, cv, st
+                b_bad, b_e = bad, e
+        return b_coords, b_traj, b_conv, b_steps
 
     def _seed_coords_from_2d(self, mol: Molecule) -> None:
         """Ensure every atom has 3D coords before optimization.
