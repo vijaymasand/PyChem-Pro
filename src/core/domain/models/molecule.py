@@ -421,9 +421,18 @@ class Molecule:
                 atom = self.atoms[atom_idx]
                 neighbors = self.get_neighbor_bonds(atom_idx)
                 num_doubles = sum(1 for _, b in neighbors if b.is_double)
-                
+                num_aromatic = sum(1 for _, b in neighbors if b.is_aromatic)
+
                 if atom.symbol == 'C':
-                    if num_doubles >= 1 or self.is_in_ring(atom_idx):
+                    # A carbon contributes to a π system only if it is sp² — it
+                    # bears a double bond or an aromatic bond.  The old test used
+                    # ``is_in_ring`` here, which is True for EVERY ring atom, so
+                    # even an sp³ ring carbon (e.g. the saturated centre of a
+                    # dihydropyridine) was counted as aromatic — falsely
+                    # flagging the whole ring aromatic, which then stripped the
+                    # torsion restraints from its real C=C/C=N bonds and let the
+                    # conjugated system twist out of plane during optimisation.
+                    if num_doubles >= 1 or num_aromatic >= 1 or atom.is_aromatic:
                         pi_electrons += 1
                     else:
                         potential_aromatic = False

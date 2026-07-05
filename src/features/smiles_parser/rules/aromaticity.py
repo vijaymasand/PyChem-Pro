@@ -134,21 +134,21 @@ def perceive_aromaticity(molecule):
         if len(ring) < 3 or len(ring) > 22:
             continue
 
-        # Check planarity requirement: all atoms must be sp2 or sp
+        # Planarity requirement: every ring atom must be able to be sp2/sp.
+        # Detect this from BONDS, not atom.hybridization — hybridization is not
+        # assigned until AFTER this pass during parsing, so relying on it let an
+        # sp3 ring carbon (e.g. the saturated centre of a dihydropyridine) pass
+        # and falsely flagged the whole ring aromatic.  A carbon with no double
+        # bond and no aromatic bond has four sigma bonds → sp3 → breaks
+        # aromaticity.  (Heteroatoms may be planar via a lone pair, so they are
+        # left to the π-electron count.)
         all_planar = True
         for atom_idx in ring:
             atom = molecule.get_atom(atom_idx)
-            hyb = atom.hybridization
-            if hyb not in ('sp2', 'sp', None):
-                # Check if it could be sp2 (aromatic atoms might not have been typed yet)
+            if atom.symbol == 'C':
                 neighbors = molecule.get_neighbor_bonds(atom_idx)
-                has_double = any(b.is_double for _, b in neighbors)
-                
-                # Heteroatoms (N, O, S, P, Se, Te) can be planar sp2 without double bonds 
-                # if they contribute a lone pair (pyrrole-type)
-                can_be_planar_hetero = molecule.atoms[atom_idx].symbol in ('N', 'O', 'S', 'P', 'Se', 'Te')
-                
-                if not has_double and not atom.is_aromatic and not can_be_planar_hetero:
+                has_pi = any(b.is_double or b.is_aromatic for _, b in neighbors)
+                if not has_pi and not atom.is_aromatic:
                     all_planar = False
                     break
 
@@ -212,7 +212,8 @@ def _count_pi_electrons(molecule, ring):
                 if has_external_double:
                     pi += 1
                 else:
-                    pi += 1  # Assume sp2 carbon in ring contributes 1
+                    pi += 0  # sp3 carbon (no ring/external double, not aromatic)
+                             # contributes no π electron
 
         elif sym == 'N':
             if has_ring_double:
