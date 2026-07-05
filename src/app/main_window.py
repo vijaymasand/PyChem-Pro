@@ -206,8 +206,8 @@ class MainWindow(QMainWindow):
                 # Discover all plugins (bundled + user)
                 self.plugin_manager.discover_all_plugins()
                 
-                # Auto-load enabled plugins
-                self._auto_load_plugins()
+                # Auto-load enabled plugins (Disabled as per user request to improve startup time)
+                # self._auto_load_plugins()
                 
                 # Refresh UI
                 self._refresh_plugin_list()

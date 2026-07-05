@@ -72,8 +72,8 @@ from src.services.forcefield.parameters import (
 from src.services.forcefield._engine.exclusions import build_exclusions
 from src.services.forcefield._engine.bond_types import mmff_bond_type_index
 
-# MMFF94 OOP-eligible classes (Jmol's CalculationsMMFF.isInvertible whitelist).
-_OOP_ELIGIBLE_CLASSES = frozenset({
+# MMFF94 OOP-eligible types (Jmol's CalculationsMMFF.isInvertible whitelist).
+_OOP_ELIGIBLE_TYPES = frozenset({
     2, 3, 10, 30, 37, 39, 40, 41, 45, 49,
     54, 55, 56, 57, 58, 63, 64, 67, 69, 78, 80, 81,
 })
@@ -245,7 +245,7 @@ class ArraysBuilder:
         for atom in mol.atoms:
             if len(mol.get_neighbors(atom.index)) != 3:
                 continue
-            if atom.mmff_class not in _OOP_ELIGIBLE_CLASSES:
+            if atom.mmff_type not in _OOP_ELIGIBLE_TYPES:
                 continue
             neighbors = list(mol.get_neighbors(atom.index))
             # Three Wilson-angle entries per center (one per outer atom).
