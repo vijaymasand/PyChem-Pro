@@ -647,6 +647,16 @@ class MainWindow(QMainWindow):
         self.chem_space_window.raise_()
         self.chem_space_window.activateWindow()
 
+    def _launch_data_splitting(self):
+        """Launch the QSAR Data Splitting tool."""
+        if not hasattr(self, 'data_split_window'):
+            from src.features.data_splitting.ui_engine import DataSplittingWindow
+            self.data_split_window = DataSplittingWindow()
+        
+        self.data_split_window.show()
+        self.data_split_window.raise_()
+        self.data_split_window.activateWindow()
+
     def _on_conversion_done(self, molecule, error):
         _mol_ctrl.on_conversion_done(self, molecule, error)
 

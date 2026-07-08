@@ -169,6 +169,10 @@ def _build_tools_menu(window, menu_bar):
     chem_space_action = QAction("Chemical Space Visualization", window)
     chem_space_action.triggered.connect(window._launch_chemical_space_viz)
     tools_menu.addAction(chem_space_action)
+    
+    data_split_action = QAction("Data Splitting", window)
+    data_split_action.triggered.connect(window._launch_data_splitting)
+    tools_menu.addAction(data_split_action)
 
 
 # ── Plugins ───────────────────────────────────────────────────────
