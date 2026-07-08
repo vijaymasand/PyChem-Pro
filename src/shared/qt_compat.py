@@ -17,7 +17,7 @@ try:
         QDoubleSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
         QScrollArea, QGridLayout, QRadioButton, QButtonGroup,
         QSizePolicy, QSlider, QGroupBox, QDockWidget, QListWidget,
-        QListWidgetItem, QDialog, QInputDialog, QFormLayout,
+        QListWidgetItem, QDialog, QInputDialog, QFormLayout, QAbstractItemView,
         QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, 
         QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem, 
         QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsSimpleTextItem, 
@@ -48,7 +48,7 @@ except ImportError as e:
             QDoubleSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
             QScrollArea, QGridLayout, QRadioButton, QButtonGroup,
             QSizePolicy, QSlider, QGroupBox, QDockWidget, QListWidget,
-            QListWidgetItem, QDialog, QInputDialog, QFormLayout,
+            QListWidgetItem, QDialog, QInputDialog, QFormLayout, QAbstractItemView,
             QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, 
             QGraphicsLineItem, QGraphicsRectItem, QGraphicsPolygonItem, 
             QGraphicsPathItem, QGraphicsPixmapItem, QGraphicsSimpleTextItem, 
@@ -347,6 +347,13 @@ except ImportError as e:
                 def emit(self): pass
         class QTreeWidget: pass
         class QTreeWidgetItem: pass
+        class QAbstractItemView:
+            class SelectionMode:
+                SingleSelection = 1
+                ContiguousSelection = 4
+                ExtendedSelection = 3
+                MultiSelection = 2
+                NoSelection = 0
         class QTextEdit:
             def __init__(self, parent=None): pass
             def setReadOnly(self, readonly): pass

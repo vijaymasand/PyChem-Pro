@@ -73,6 +73,7 @@ This makes PyChem-Pro:
 - Morgan (ECFP) and topological fingerprints
 - Center of Mass and Shrake-Rupley SASA
 - **Structural alignment / superposition** — Kabsch fit with iterative outlier rejection; atom correspondence by index, element, or protein Cα sequence (Needleman-Wunsch); RMSD reporting (pure NumPy)
+- **QSAR Data Splitting** — 7 partitioning algorithms (Random, Scaffold, CADEX, D-Optimal, Sphere Exclusion, Boruta, Duplex) with PCA visualization and KS-test evaluation.
 
 ### Visualization
 - Hardware-aware software 3D rendering (QPainter with gradient sphere shading)
@@ -385,6 +386,7 @@ pychem.add_hydrogens(mol: Molecule) -> int
 pychem.compute_charges(mol: Molecule) -> None
 pychem.descriptors(mol: Molecule, names: list[str] | None = None) -> dict
 pychem.descriptors_batch(mols: list[Molecule], names: list[str] | None = None) -> list[dict]
+pychem.split_dataset(df_or_path, algorithm: str, target_ratio: float, smiles_col: str, **kwargs) -> SplitResult
 
 # Structural alignment (mobile/reference may be a Molecule or a file path)
 pychem.align(mobile, reference, *, method='auto', selection='auto',
@@ -447,6 +449,7 @@ PyChem/
 │   │   ├── smiles_generator/      # SMILES writer
 │   │   ├── io/                    # File readers/writers
 │   │   ├── descriptor_calculator/ # Descriptor GUI and engines
+│   │   ├── data_splitting/        # QSAR dataset partitioning and UI
 │   │   ├── scripting_console/     # Python REPL + atom selection
 │   │   ├── control_panel/         # Input panel
 │   │   └── ui/                    # Dialogs (colors, spheres, etc.)
