@@ -84,10 +84,12 @@ class GLDataMixin:
         
         self._atom_is_backbone = np.zeros(n, dtype=bool)
         self._atom_is_sidechain = np.zeros(n, dtype=bool)
+        self._atom_is_water = np.zeros(n, dtype=bool)
         self._atom_res_seqs = np.zeros(n, dtype=int)
-        
+
         _AMINO_ACIDS = {'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY', 'HIS', 'ILE', 'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL'}
         _BACKBONE_ATOMS = {'N', 'CA', 'C', 'O', 'OXT'}
+        _WATER_RES = {'HOH', 'WAT', 'SOL', 'DOD'}
 
         for i, atom in enumerate(ordered_atoms):
             if atom.has_coords:
@@ -96,16 +98,23 @@ class GLDataMixin:
             colors[i] = c
             radii[i] = _display_radius(atom.symbol)
             symbols.append(atom.symbol)
-            
+
+            if (getattr(atom, 'res_name', '') or '').upper() in _WATER_RES:
+                self._atom_is_water[i] = True
+
             rs = getattr(atom, 'res_seq', -1)
             if rs is not None:
                 self._atom_res_seqs[i] = rs
                 
             if i < self._ligand_start:
-                if atom.res_name in _AMINO_ACIDS and atom.pdb_name.strip() not in _BACKBONE_ATOMS:
-                    self._atom_is_sidechain[i] = True
-                elif atom.res_name in _AMINO_ACIDS:
+                # Protein atom (incl. modified residues like PTR / HID): classify
+                # by atom name so its backbone joins the cartoon and its side
+                # chain is hidden with the rest — never drawn as an overlapping
+                # ball-and-stick "ligand".
+                if (atom.pdb_name or '').strip() in _BACKBONE_ATOMS:
                     self._atom_is_backbone[i] = True
+                else:
+                    self._atom_is_sidechain[i] = True
             
         # Center to origin
         if n > 0:
@@ -149,7 +158,7 @@ class GLDataMixin:
             if is_mesh_active and hasattr(self, '_atom_is_backbone'):
                 # Mask out all backbone atoms
                 active_radii[self._atom_is_backbone] = 0.0
-                
+
                 # Mask out sidechains if not shown
                 if not show_all_sidechains:
                     for i in range(len(active_radii)):
@@ -157,6 +166,13 @@ class GLDataMixin:
                             rs = self._atom_res_seqs[i]
                             if not sidechain_res_vis.get(rs, False) and rs not in visible_sidechains:
                                 active_radii[i] = 0.0
+
+            # Hide crystallographic waters by default — a docking-prep structure
+            # can carry hundreds of lone O atoms that render as scattered red dots
+            # obscuring the protein.  (Set `show_waters = True` to reveal them.)
+            if (not getattr(self, 'show_waters', False)
+                    and hasattr(self, '_atom_is_water')):
+                active_radii[self._atom_is_water] = 0.0
 
             # 1. Atoms Buffer (Center, Color, Radius, Offset)
             if self._vbo_atoms: self._vbo_atoms.destroy()
@@ -186,6 +202,20 @@ class GLDataMixin:
             if self.molecule and self.molecule.properties.get('is_protein'):
                 from src.features.visualization_3d.services.cartoon_generator import generate_cartoon_mesh
                 from src.shared.ui.theme import COLORS
+                # Compute secondary structure (DSSP) and propagate to atoms BEFORE
+                # the mesh generator reads atom.ss_type.  Structures loaded without
+                # HELIX/SHEET header records (PDBQT, many PDBs) arrive all-coil, so
+                # without this the GL cartoon is a featureless worm instead of a
+                # proper helix/sheet ribbon.  (The software renderer already does
+                # this; the GL path was missing it.)  Guarded per-molecule so DSSP
+                # runs once, not every frame.
+                if not self.molecule.properties.get('_ss_propagated', False):
+                    try:
+                        from src.features.visualization_3d.services.protein_rendering import ProteinStructure
+                        ProteinStructure(self.molecule)
+                    except Exception:
+                        pass
+                    self.molecule.properties['_ss_propagated'] = True
                 t_mesh = time.time()
                 # Always use high quality mesh for GPU renderer (it can easily handle it)
                 v, t, c = generate_cartoon_mesh(self.molecule, spline_steps=24, profile_detail=16, theme_colors=COLORS)
@@ -342,7 +372,12 @@ class GLDataMixin:
             
             if new_bi >= n_atoms or new_ei >= n_atoms:
                 continue
-            
+
+            # Skip bonds touching a hidden water (see the radius mask above).
+            if (not getattr(self, 'show_waters', False) and hasattr(self, '_atom_is_water')
+                    and (self._atom_is_water[new_bi] or self._atom_is_water[new_ei])):
+                continue
+
             # Fetch original atoms from the molecule for property checks
             a1 = mol.atoms[bi]
             a2 = mol.atoms[ei]

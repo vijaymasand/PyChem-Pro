@@ -20,6 +20,6 @@ build/
 venv/
 .venv/
 env/
-
+*.pdbqt
 *.cif
 *.mmcif

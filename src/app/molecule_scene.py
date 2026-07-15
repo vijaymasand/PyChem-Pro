@@ -322,6 +322,14 @@ class MoleculeScene(QObject):
         if any_protein:
             merged.properties['is_protein'] = True
 
+        merged_dummy_spheres = []
+        for obj in ordered:
+            if not obj.visible or obj.molecule is None or not obj.molecule.atoms:
+                continue
+            if hasattr(obj.molecule, 'dummy_spheres') and obj.molecule.dummy_spheres:
+                merged_dummy_spheres.extend(obj.molecule.dummy_spheres)
+        merged.dummy_spheres = merged_dummy_spheres
+
         return SceneOverlay(
             merged if merged.atoms else None,
             atom_origin, object_ranges, custom_modes, custom_colors, any_protein,

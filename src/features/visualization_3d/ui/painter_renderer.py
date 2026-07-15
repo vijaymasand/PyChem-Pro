@@ -178,6 +178,11 @@ class PainterRenderer:
             if atom.symbol == 'H' and not v.show_hydrogens:
                 continue
 
+            if getattr(v, 'hide_solvent', False):
+                res_name = getattr(atom, 'res_name', '').upper()
+                if res_name in ('HOH', 'WAT', 'SOL', 'DOD'):
+                    continue
+
             x, y, z = atom.x, atom.y, atom.z
             if hasattr(v, '_centroid') and v._centroid is not None:
                 x -= v._centroid[0]
@@ -212,7 +217,15 @@ class PainterRenderer:
 
             # Color from element or custom override
             custom_colors = getattr(v, 'custom_atom_colors', {})
-            if atom.index in custom_colors:
+            if getattr(v, 'color_by_partial_charge', False):
+                pc = getattr(atom, 'partial_charge', 0.0)
+                # scale pc (typical range -1 to 1)
+                intensity = max(0.0, min(1.0, abs(pc)))
+                if pc < 0:
+                    color = (255, int(255 * (1 - intensity)), int(255 * (1 - intensity)))
+                else:
+                    color = (int(255 * (1 - intensity)), int(255 * (1 - intensity)), 255)
+            elif atom.index in custom_colors:
                 color = custom_colors[atom.index]
             else:
                 color = _hex_to_rgb(atom.element.color)
@@ -643,8 +656,18 @@ class PainterRenderer:
                 self._draw_bond_line(painter, x1 + ox, y1 + oy, x2 + ox, y2 + oy,
                                      c1, c2, base_width * 0.4, depth_shade, dashed=True, is_custom=is_custom)
             else:
+                dashed = False
+                c1_eff, c2_eff = c1, c2
+                if getattr(v, 'show_rotatable_bonds', False):
+                    rot_bonds = getattr(v.molecule, 'properties', {}).get('rotatable_bonds', [])
+                    bond_key = tuple(sorted((i, j)))
+                    if bond_key in rot_bonds:
+                        dashed = True
+                        c1_eff = (50, 255, 50) # Vivid green
+                        c2_eff = (50, 255, 50)
+                
                 self._draw_bond_line(painter, x1, y1, x2, y2,
-                                     c1, c2, base_width, depth_shade, is_custom=is_custom)
+                                     c1_eff, c2_eff, base_width, depth_shade, dashed=dashed, is_custom=is_custom)
 
     def _draw_bond_line(self, painter, x1, y1, x2, y2, c1, c2, width, shade, dashed=False, is_custom=False):
         from src.features.visualization_3d.services.atom_rendering import draw_bond_line
@@ -659,7 +682,12 @@ class PainterRenderer:
             
         from src.features.visualization_3d.services.atom_rendering import draw_label
         atom = v.molecule.atoms[atom_idx]
-        draw_label(painter, atom.symbol, sx, sy, radius, v.label_font_size, getattr(v, '_export_scale', 1.0), v.label_color)
+        
+        lbl_text = atom.symbol
+        if getattr(v, 'show_autodock_types', False) and getattr(atom, 'autodock_atom_type', None):
+            lbl_text = f"{atom.symbol} ({atom.autodock_atom_type})"
+            
+        draw_label(painter, lbl_text, sx, sy, radius, v.label_font_size, getattr(v, '_export_scale', 1.0), v.label_color)
 
     def _draw_residue_label(self, v, painter, text, sx, sy, color, radius, settings=None):
         from src.features.visualization_3d.services.atom_rendering import draw_residue_label
@@ -932,13 +960,17 @@ class PainterRenderer:
             import traceback
             traceback.print_exc()
 
-            # Optionally draw side chains
-            if getattr(v, 'show_sidechains', False) or getattr(v, 'sidechain_res_vis', {}):
-                self._draw_side_chains(v, painter, projected)
+            # Ensure SS is propagated to atoms for fallback rendering
+            try:
+                from src.features.visualization_3d.services.protein_rendering import ProteinStructure
+                _ss_flag = '_ss_propagated'
+                if not v.molecule.properties.get(_ss_flag, False):
+                    ProteinStructure(v.molecule)
+                    v.molecule.properties[_ss_flag] = True
+            except Exception:
+                pass
 
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
+            # Fallback to QPainter-based cartoon drawing
             residues = self._group_residues(v)
             if v.render_mode == 'cartoon':
                 self._draw_cartoon(v, painter, residues)
@@ -946,6 +978,10 @@ class PainterRenderer:
                 self._draw_ribbon(v, painter, residues)
             elif v.render_mode == 'backbone':
                 self._draw_backbone(v, painter, residues)
+
+            # Optionally draw side chains
+            if getattr(v, 'show_sidechains', False) or getattr(v, 'sidechain_res_vis', {}):
+                self._draw_side_chains(v, painter, projected)
 
     def _group_residues(self, v):
         """Group atoms into residues for protein rendering."""
@@ -1408,6 +1444,8 @@ class PainterRenderer:
         sin_x = math.sin(math.radians(v.rot_x))
         cos_y = math.cos(math.radians(v.rot_y))
         sin_y = math.sin(math.radians(v.rot_y))
+        cos_z = math.cos(math.radians(getattr(v, 'rot_z', 0.0)))
+        sin_z = math.sin(math.radians(getattr(v, 'rot_z', 0.0)))
 
         spheres_with_depth = []
         for sphere in dummy_spheres:
@@ -1425,6 +1463,9 @@ class PainterRenderer:
             z1 = -x * sin_y + z * cos_y
             y1 = y * cos_x - z1 * sin_x
             z2 = y * sin_x + z1 * cos_x
+            
+            x2 = x1 * cos_z - y1 * sin_z
+            y2 = x1 * sin_z + y1 * cos_z
 
             spheres_with_depth.append((sphere, z2))
 
@@ -1452,8 +1493,11 @@ class PainterRenderer:
             z1 = -x * sin_y + z * cos_y
             y1 = y * cos_x - z1 * sin_x
 
-            sx = cx + x1 * v.zoom
-            sy = cy - y1 * v.zoom
+            x2 = x1 * cos_z - y1 * sin_z
+            y2 = x1 * sin_z + y1 * cos_z
+
+            sx = cx + x2 * v.zoom
+            sy = cy - y2 * v.zoom
 
             if getattr(sphere, 'label', '') in ['COM', 'Centroid']:
                 display_r = radius * v.zoom * v.sphere_scale

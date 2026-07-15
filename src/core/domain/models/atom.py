@@ -49,6 +49,7 @@ class Atom:
         'chain_id', 'res_seq', 'b_factor', 'is_hetatm', 'ss_type',
         'sasa', 'sasa_points',
         'mmff_type', 'mmff_class',
+        'autodock_atom_type',
     )
 
     def __init__(self, symbol, is_aromatic=False, formal_charge=0,
@@ -105,6 +106,9 @@ class Atom:
         # MMFF94 typing (set by AtomTyper; 0 = unknown)
         self.mmff_type = 0
         self.mmff_class = 0
+
+        # AutoDock typing
+        self.autodock_atom_type = None
 
     @property
     def symbol(self):

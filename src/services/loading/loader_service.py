@@ -82,7 +82,7 @@ class LoaderService:
     def _load_standard(path: str, ext: str):
         """Single-threaded load via existing file_reader functions."""
         from src.features.io.loaders.file_reader import (
-            read_mol, read_sdf, read_mol2, read_pdb,
+            read_mol, read_sdf, read_mol2, read_pdb, read_pdbqt
         )
 
         if ext == ".pdb" or ext == ".ent":
@@ -91,6 +91,8 @@ class LoaderService:
             return read_mol(path)
         elif ext == ".mol2":
             return read_mol2(path)
+        elif ext == ".pdbqt":
+            return read_pdbqt(path)
         elif ext in (".sdf", ".sd"):
             return read_sdf(path)
         elif ext in (".cif", ".mmcif"):

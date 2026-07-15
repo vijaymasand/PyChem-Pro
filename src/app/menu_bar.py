@@ -230,6 +230,36 @@ def _build_view_menu(window, menu_bar):
 
     view_menu.addSeparator()
 
+    toggle_solvent = QAction("Hide &Solvent (Water/Ions)", window)
+    toggle_solvent.setCheckable(True)
+    toggle_solvent.setChecked(False)
+    toggle_solvent.triggered.connect(window._toggle_solvent_action)
+    window.toggle_solvent_action = toggle_solvent
+    view_menu.addAction(toggle_solvent)
+
+    toggle_rotatable = QAction("Highlight &Rotatable Bonds", window)
+    toggle_rotatable.setCheckable(True)
+    toggle_rotatable.setChecked(False)
+    toggle_rotatable.triggered.connect(window._toggle_rotatable_bonds_action)
+    window.toggle_rotatable_bonds_action = toggle_rotatable
+    view_menu.addAction(toggle_rotatable)
+    
+    toggle_ad_types = QAction("Show AutoDock Atom &Types", window)
+    toggle_ad_types.setCheckable(True)
+    toggle_ad_types.setChecked(False)
+    toggle_ad_types.triggered.connect(window._toggle_autodock_types_action)
+    window.toggle_ad_types_action = toggle_ad_types
+    view_menu.addAction(toggle_ad_types)
+    
+    color_by_charge = QAction("Color by Partial &Charge Heatmap", window)
+    color_by_charge.setCheckable(True)
+    color_by_charge.setChecked(False)
+    color_by_charge.triggered.connect(window._color_by_partial_charge_action)
+    window.color_by_charge_action = color_by_charge
+    view_menu.addAction(color_by_charge)
+
+    view_menu.addSeparator()
+
     bg_color_3d_action = QAction("3D Background Color...", window)
     bg_color_3d_action.setShortcut(QKeySequence("Ctrl+Shift+B"))
     bg_color_3d_action.triggered.connect(window._change_3d_bg_color)

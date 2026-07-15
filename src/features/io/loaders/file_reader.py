@@ -518,12 +518,190 @@ def read_pdb(filepath):
 
     return mol
 
+def read_pdbqt(filepath):
+    """
+    Read a molecule/protein from PDBQT file format (AutoDock).
+    Extracts coordinates, partial charges (Q), AutoDock atom types (T), and parses branches for rotatable bonds.
+    """
+    import os
+    import time
+
+    t0 = time.time()
+    mol = Molecule(name=os.path.basename(filepath))
+    conect_records = []
+    serial_to_idx = {}
+
+    atoms_data = [] # List of (serial, element, x, y, z, name, res, chain, seq, b_fact, is_het, partial_charge, ad_type)
+    
+    # AutoDock specific parsing state
+    active_branches = [] # stack of branch start atom indices
+    rotatable_bonds = [] # list of (idx1, idx2)
+
+    with open(filepath, 'r', buffering=1024*1024) as f:
+        for line in f:
+            if len(line) < 6: continue
+            record = line[0:6]
+
+            if record.startswith('ATOM') or record.startswith('HETATM'):
+                try:
+                    serial = int(line[6:11])
+                    name = line[12:16].strip()
+                    res = line[17:20].strip()
+                    chain = line[21]
+                    try:
+                        seq = int(line[22:26])
+                    except ValueError:
+                        seq = 1
+                    
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+
+                    b_fact = float(line[60:66]) if len(line) >= 66 else 0.0
+                    
+                    # PDBQT specific columns
+                    partial_charge = 0.0
+                    ad_type = ""
+                    if len(line) >= 76:
+                        try:
+                            partial_charge = float(line[70:76])
+                        except ValueError:
+                            pass
+                    
+                    if len(line) >= 79:
+                        ad_type = line[77:79].strip()
+
+                    # Deduce element from AD type if possible, or name
+                    element = ad_type
+                    if not element or element in ('A', 'C', 'OA', 'N', 'NA', 'SA', 'HD', 'HS', 'HX'):
+                        if element == 'OA': element = 'O'
+                        elif element == 'NA': element = 'N'
+                        elif element == 'SA': element = 'S'
+                        elif element in ('HD', 'HS', 'HX'): element = 'H'
+                        elif element == 'A': element = 'C'
+                        
+                        if not element or element not in ('H', 'C', 'N', 'O', 'S', 'P', 'F', 'Cl', 'Br', 'I'):
+                            nc = name.lstrip('0123456789')
+                            element = nc[:2].upper() if nc[:2].upper() in ('CL','BR','FE','ZN','MG','CA','NA','MN','CU','CO','NI') else nc[0].upper()
+                    elif len(element) > 1 and element.upper() not in ('CL','BR','FE','ZN','MG','CA','NA','MN','CU','CO','NI'):
+                        element = element[0].upper()
+                    
+                    # AutoDock writes the whole receptor (including modified
+                    # residues and caps) as ATOM records, and a small-molecule
+                    # ligand as ATOM too.  Classify by residue name: any protein
+                    # residue (standard, modified, or capped) is receptor; a
+                    # genuine non-peptide ligand keeps its HETATM status.
+                    is_het = res.upper() not in _PROTEIN_RESIDUES
+                    
+                    atoms_data.append((serial, element, x, y, z, name, res, chain, seq, b_fact, is_het, partial_charge, ad_type))
+                except Exception:
+                    continue
+
+            elif record.startswith('BRANCH'):
+                try:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        b_start = int(parts[1])
+                        b_end = int(parts[2])
+                        active_branches.append((b_start, b_end))
+                        rotatable_bonds.append((b_start, b_end))
+                except Exception:
+                    pass
+            elif record.startswith('ENDBRA'): # ENDBRANCH
+                try:
+                    if active_branches:
+                        active_branches.pop()
+                except Exception:
+                    pass
+            elif record.startswith('CONECT'):
+                try:
+                    p = line[6:].split()
+                    if len(p) >= 2:
+                        o = int(p[0])
+                        for t in p[1:]: conect_records.append((o, int(t)))
+                except: pass
+
+    mol.begin_bulk_load()
+    for d in atoms_data:
+        a = Atom(d[1])
+        a.x, a.y, a.z = d[2], d[3], d[4]
+        a.pdb_name, a.res_name, a.chain_id, a.res_seq = d[5], d[6], d[7], d[8]
+        a.b_factor, a.is_hetatm = d[9], d[10]
+        a.partial_charge = d[11]
+        a.autodock_atom_type = d[12]
+        
+        # Aromatic mapping from AD types
+        if a.autodock_atom_type in ('A', 'OA', 'NA', 'SA'):
+            a.is_aromatic = True
+
+        idx = mol.add_atom(a)
+        serial_to_idx[d[0]] = idx
+
+    for a in mol.atoms: a.ss_type = 'C'
+
+    done = set()
+    for s1, s2 in conect_records:
+        if s1 in serial_to_idx and s2 in serial_to_idx:
+            i1, i2 = serial_to_idx[s1], serial_to_idx[s2]
+            key = tuple(sorted((i1, i2)))
+            if key not in done:
+                mol.add_bond(i1, i2, BondType.SINGLE)
+                done.add(key)
+
+    # Process rotatable bonds from BRANCH definitions
+    resolved_rotatable = []
+    for s1, s2 in rotatable_bonds:
+        if s1 in serial_to_idx and s2 in serial_to_idx:
+            i1, i2 = serial_to_idx[s1], serial_to_idx[s2]
+            key = tuple(sorted((i1, i2)))
+            if key not in done:
+                mol.add_bond(i1, i2, BondType.SINGLE)
+                done.add(key)
+            resolved_rotatable.append(key)
+
+    mol.properties['rotatable_bonds'] = resolved_rotatable
+
+    if len(mol.atoms) > 0 and len(mol.bonds) < len(mol.atoms) * 0.8:
+        _auto_bond_pdb(mol)
+    
+    mol.end_bulk_load()
+    is_protein_flag = any(a.res_name in _AMINO_ACIDS for a in mol.atoms)
+    mol.properties.update({
+        'is_protein': is_protein_flag,
+        'helix_ranges': [],
+        'sheet_ranges': []
+    })
+    print(f"[Performance] read_pdbqt took {time.time()-t0:.3f}s for {len(mol.atoms)} atoms, is_protein={is_protein_flag}")
+    return mol
+
 
 _AMINO_ACIDS = {
     'ALA', 'ARG', 'ASN', 'ASP', 'CYS', 'GLU', 'GLN', 'GLY', 'HIS', 'ILE',
     'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
     'MSE', 'SEC', 'PYL',
 }
+
+# Non-standard residues that are still part of a protein chain (modified side
+# chains, protonation/tautomer variants used by AutoDock/AMBER preparation, and
+# terminal caps).  These carry backbone atoms and are peptide-bonded into the
+# chain, so they must be treated as protein — otherwise a phospho-tyrosine or a
+# HID/HIE/HIP histidine in the middle of the sequence is misread as a separate
+# "ligand" and drawn as ball-and-stick overlapping the cartoon.
+_MODIFIED_RESIDUES = {
+    # phosphorylated
+    'PTR', 'SEP', 'TPO', 'PTM',
+    # protonation / tautomer variants (AutoDock, AMBER, CHARMM)
+    'HID', 'HIE', 'HIP', 'HSD', 'HSE', 'HSP',
+    'CYX', 'CYM', 'ASH', 'GLH', 'LYN', 'ARN', 'CYP',
+    # terminal caps
+    'ACE', 'NME', 'NHE', 'NH2', 'FOR',
+    # other common modifications
+    'HYP', 'PCA', 'MLY', 'M3L', 'KCX', 'CSO', 'CME', 'CSD', 'OCS',
+    'TYS', 'SAC', 'ABA', 'ORN', 'DAL', 'AIB',
+}
+
+# Any residue name that should be rendered as part of the protein chain.
+_PROTEIN_RESIDUES = _AMINO_ACIDS | _MODIFIED_RESIDUES
 
 # Covalent bond distance cutoffs by element pair (Angstroms)
 _COVALENT_RADII = {

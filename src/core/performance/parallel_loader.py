@@ -115,7 +115,7 @@ class ParallelFileLoader:
     
     def _load_standard(self, filepath: Path, ext: str) -> Any:
         """Standard single-threaded file loading."""
-        from src.features.io.loaders.file_reader import read_mol, read_sdf, read_mol2, read_pdb
+        from src.features.io.loaders.file_reader import read_mol, read_sdf, read_mol2, read_pdb, read_pdbqt
         
         if ext in ('.mol',):
             return read_mol(str(filepath))
@@ -123,8 +123,10 @@ class ParallelFileLoader:
             return read_sdf(str(filepath))
         elif ext in ('.mol2',):
             return read_mol2(str(filepath))
-        elif ext in ('.pdb', '.ent'):
+        elif ext == '.pdb':
             return read_pdb(str(filepath))
+        elif ext == '.pdbqt':
+            return read_pdbqt(str(filepath))
         elif ext in ('.cif', '.mmcif'):
             from pdbx.mmcif_molecule import read_mmcif
             return read_mmcif(str(filepath))
