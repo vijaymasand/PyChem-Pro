@@ -64,7 +64,8 @@ This makes PyChem-Pro:
 
 ### Chemistry
 - SMILES parser with Huckel aromaticity perception, stereochemistry, bracketed atoms, radicals
-- PDB / PDBx / mmCIF/ MOL / MOL2 / SDF file readers with automatic bond detection and CONECT parsing
+- PDB / PDBx / mmCIF / PDBQT / MOL / MOL2 / SDF file readers with automatic bond detection and CONECT parsing
+- PDBQT support for small and large molecules
 - 3D coordinate generation from molecular topology (BFS + force-field relaxation)
 - **MMFF94 force field** with hydrogen addition, bond stretching, angle bending, torsion, Van der Waals, and BCI partial charge assignment
 - L-BFGS and steepest descent optimizers
@@ -85,7 +86,7 @@ This makes PyChem-Pro:
 - High-DPI image export (72 / 150 / 300 / 600 DPI)
 - Offline ray-tracer for publication-quality images
 - Print (Ctrl+P) — prints 2D and 3D views on a single page
-- Open multiple molecules in same window
+- Open multiple files/molecules simultaneously in same window
 
 ### Architecture
 - Service-oriented with `typing.Protocol` interfaces
