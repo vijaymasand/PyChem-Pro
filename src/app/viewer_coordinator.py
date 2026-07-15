@@ -145,7 +145,10 @@ def toggle_com_sphere(window):
     if hasattr(window, '_toggle_com_action') and window._toggle_com_action.isChecked():
         manager.create_sphere_at_com(radius=window._com_radius)
 
-    window.viewer_3d.update()
+    if hasattr(window, '_refresh_scene'):
+        window._refresh_scene()
+    else:
+        window.viewer_3d.update()
 
 
 def toggle_centroid_sphere(window):
@@ -163,7 +166,10 @@ def toggle_centroid_sphere(window):
     if hasattr(window, '_toggle_centroid_action') and window._toggle_centroid_action.isChecked():
         manager.create_sphere_at_centroid(radius=window._centroid_radius)
 
-    window.viewer_3d.update()
+    if hasattr(window, '_refresh_scene'):
+        window._refresh_scene()
+    else:
+        window.viewer_3d.update()
 
 
 # ── Sphere tools (Applications > Tools) ──────────────────────────
@@ -194,7 +200,10 @@ def add_com_sphere(window):
         sphere_id = manager.create_sphere_at_com(radius=window._com_radius)
         com_pos = manager.calculate_center_of_mass()
 
-        window.viewer_3d.update()
+        if hasattr(window, '_refresh_scene'):
+            window._refresh_scene()
+        else:
+            window.viewer_3d.update()
         window.status_bar.showMessage(
             f"COM sphere added at ({com_pos[0]:.2f}, {com_pos[1]:.2f}, {com_pos[2]:.2f}) "
             f"with radius {window._com_radius} \u00c5")
@@ -229,7 +238,10 @@ def add_centroid_sphere(window):
         sphere_id = manager.create_sphere_at_centroid(radius=window._centroid_radius)
         centroid_pos = manager.calculate_geometric_centroid()
 
-        window.viewer_3d.update()
+        if hasattr(window, '_refresh_scene'):
+            window._refresh_scene()
+        else:
+            window.viewer_3d.update()
         window.status_bar.showMessage(
             f"Centroid sphere added at ({centroid_pos[0]:.2f}, {centroid_pos[1]:.2f}, "
             f"{centroid_pos[2]:.2f}) with radius {window._centroid_radius} \u00c5")
@@ -265,7 +277,9 @@ def add_custom_sphere(window):
                 )
                 created_count += 1
 
-            if hasattr(window.viewer_3d, 'update'):
+            if hasattr(window, '_refresh_scene'):
+                window._refresh_scene()
+            elif hasattr(window.viewer_3d, 'update'):
                 window.viewer_3d.update()
 
             window.status_bar.showMessage(

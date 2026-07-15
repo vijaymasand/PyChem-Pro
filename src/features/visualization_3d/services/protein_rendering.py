@@ -64,6 +64,7 @@ class ProteinStructure:
         self.chains: Dict[str, Chain] = {}
         self._parse_structure()
         self._detect_secondary_structure()
+        self._propagate_ss_to_atoms()
     
     def _parse_structure(self):
         """Parse molecule into chains and residues."""
@@ -111,6 +112,34 @@ class ProteinStructure:
                     self.chains[chain_id] = Chain(chain_id, [])
                 self.chains[chain_id].residues.append(residue)
     
+    def _propagate_ss_to_atoms(self):
+        """Write computed SS types back to molecule atoms.
+
+        The cartoon mesh generator (compute_chain_planes) reads
+        atom.ss_type directly, so the DSSP/PDB-record results stored
+        on Residue objects must be mirrored onto every atom that belongs
+        to that residue.
+        """
+        # Build lookup: (chain_id, res_seq) -> SS type character
+        ss_map = {}
+        for chain in self.chains.values():
+            for r in chain.residues:
+                ss_char = r.ss_type.value if hasattr(r.ss_type, 'value') else r.ss_type
+                # Map 3-10 helix (G) and pi-helix (I) to 'H' so the
+                # cartoon mesh renderer treats them as helical tubes.
+                if ss_char in ('G', 'I'):
+                    ss_char = 'H'
+                # Map turns (T) and bends (S) to coil for the mesh.
+                elif ss_char in ('T', 'S', 'B'):
+                    ss_char = 'C'
+                ss_map[(r.chain_id, r.res_seq)] = ss_char
+
+        for atom in self.molecule.atoms:
+            chain = getattr(atom, 'chain_id', '') or 'A'
+            seq = getattr(atom, 'res_seq', None)
+            if seq is not None and (chain, seq) in ss_map:
+                atom.ss_type = ss_map[(chain, seq)]
+
     def _detect_secondary_structure(self):
         """Detect secondary structure.
         
@@ -201,22 +230,21 @@ class ProteinStructure:
                     coords_ca[i] = [r.ca_atom.x, r.ca_atom.y, r.ca_atom.z]
                     valid_mask[i] = True
             
-            # 2. Estimate H positions
-            # H_i is placed 1.0 A from N_i in the direction of (N_i - C_{i-1})
+            # 2. Estimate amide-H positions (Kabsch & Sander 1983): the backbone
+            # H on N_i sits 1.0 A from N_i along the direction of the PRECEDING
+            # residue's carbonyl bond, C_{i-1} - O_{i-1}.  The earlier code used
+            # (N_i - C_{i-1}), a different direction that gave usable helix
+            # H-bond energies but systematically wrong inter-strand energies, so
+            # β-sheets were never detected (a mostly-β protein came out all-coil).
             coords_h = np.zeros((n, 3))
             # For i > 0
-            vec_nc = coords_n[1:] - coords_c[:-1]
-            norms = np.linalg.norm(vec_nc, axis=1, keepdims=True)
+            vec_co = coords_c[:-1] - coords_o[:-1]
+            norms = np.linalg.norm(vec_co, axis=1, keepdims=True)
             norms[norms < 0.01] = 1.0
-            coords_h[1:] = coords_n[1:] + (vec_nc / norms) * 1.0
-            
-            # For i = 0 (fallback to CA-N direction)
-            vec_nca = coords_n[0] - coords_ca[0]
-            norm_nca = np.linalg.norm(vec_nca)
-            if norm_nca > 0.01:
-                coords_h[0] = coords_n[0] + (vec_nca / norm_nca) * 1.0
-            else:
-                coords_h[0] = coords_n[0] # fail gracefully
+            coords_h[1:] = coords_n[1:] + (vec_co / norms) * 1.0
+
+            # i = 0 has no preceding carbonyl; leave H on N (it cannot donate).
+            coords_h[0] = coords_n[0]
 
             # 3. Vectorized H-bond energy calculation (E < -0.5 kcal/mol)
             # E = 0.084 * 332 * (1/r_ON + 1/r_CH - 1/r_OH - 1/r_CN)
@@ -555,6 +583,19 @@ def render_protein_cartoon(painter, molecule: Molecule,
     # Use high quality cached mesh at all times (previously 24/16)
     spline_steps = 24
     profile_detail = 16
+    
+    # Ensure secondary structure is computed and propagated to atoms
+    # BEFORE the mesh generator reads atom.ss_type values.
+    # Use a per-molecule flag to avoid re-running DSSP on every frame.
+    _ss_flag = '_ss_propagated'
+    if not molecule.properties.get(_ss_flag, False):
+        _protein = ProteinStructure(molecule)   # runs DSSP + propagates to atoms
+        molecule.properties[_ss_flag] = True
+        # Invalidate any stale mesh cache since SS assignments changed
+        _cartoon_gen.invalidate()
+        # Also clear the rendered image cache
+        if hasattr(render_protein_cartoon, '_img_cache'):
+            render_protein_cartoon._img_cache = {}
     
     t0_mesh = time.time()
     from src.shared.ui.theme import COLORS

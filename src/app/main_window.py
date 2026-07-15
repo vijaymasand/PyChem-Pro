@@ -925,6 +925,32 @@ class MainWindow(QMainWindow):
     def _toggle_centroid_sphere(self):
         _viewer.toggle_centroid_sphere(self)
 
+    def _toggle_solvent_action(self):
+        """Toggle the visibility of solvent (water/ions) in 3D viewer."""
+        if hasattr(self, 'viewer_3d'):
+            self.viewer_3d.hide_solvent = self.toggle_solvent_action.isChecked()
+            self.viewer_3d.update()
+
+    def _toggle_rotatable_bonds_action(self):
+        """Toggle highlighting of rotatable bonds in 3D viewer."""
+        if hasattr(self, 'viewer_3d'):
+            self.viewer_3d.show_rotatable_bonds = self.toggle_rotatable_bonds_action.isChecked()
+            self.viewer_3d.update()
+
+    def _toggle_autodock_types_action(self):
+        """Toggle display of AutoDock atom types in labels."""
+        if hasattr(self, 'viewer_3d'):
+            self.viewer_3d.show_autodock_types = self.toggle_ad_types_action.isChecked()
+            self.viewer_3d.update()
+
+    def _color_by_partial_charge_action(self):
+        """Toggle coloring by partial charge heatmap."""
+        if hasattr(self, 'viewer_3d'):
+            self.viewer_3d.color_by_partial_charge = self.color_by_charge_action.isChecked()
+            if hasattr(self.viewer_3d, 'renderer') and hasattr(self.viewer_3d.renderer, 'invalidate_cache'):
+                self.viewer_3d.renderer.invalidate_cache()
+            self.viewer_3d.update()
+
     def _show_color_dialog(self):
         _viewer.show_color_dialog(self)
 
