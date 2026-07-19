@@ -151,11 +151,11 @@ class ProteinStructure:
         pdb_applied = self._apply_pdb_ss_records()
         
         if pdb_applied:
-            print("[DSSP] Using PDB HELIX/SHEET records for SS assignment")
+            # print("[DSSP] Using PDB HELIX/SHEET records for SS assignment")
             return
         
         # Fallback: DSSP hydrogen-bond energy algorithm
-        print("[DSSP] No PDB SS records found, computing DSSP from coordinates...")
+        # print("[DSSP] No PDB SS records found, computing DSSP from coordinates...")
         self._detect_ss_dssp()
     
     def _apply_pdb_ss_records(self) -> bool:
@@ -194,7 +194,7 @@ class ProteinStructure:
             for r in chain.residues:
                 ss = r.ss_type.value
                 counts[ss] = counts.get(ss, 0) + 1
-        print(f"[DSSP] PDB SS assignment: {counts}")
+        # print(f"[DSSP] PDB SS assignment: {counts}")
         
         return True
     
@@ -356,9 +356,9 @@ class ProteinStructure:
                 ss = r.ss_type.value
                 counts[ss] = counts.get(ss, 0) + 1
             t3 = time.time()
-            print(f"[DSSP] Chain {chain.chain_id} - Matrix: {t1-t0:.3f}s, Dict: {t2-t1:.3f}s, Rules: {t3-t2:.3f}s")
-            print(f"[DSSP] Computed SS: {counts}")
-        print(f"[Performance] Total DSSP took {time.time()-t_start:.3f}s")
+            # print(f"[DSSP] Chain {chain.chain_id} - Matrix: {t1-t0:.3f}s, Dict: {t2-t1:.3f}s, Rules: {t3-t2:.3f}s")
+            # print(f"[DSSP] Computed SS: {counts}")
+        # print(f"[Performance] Total DSSP took {time.time()-t_start:.3f}s")
     
     def _dssp_hbond_energy(self, residues: List['Residue'], 
                            donor_idx: int, acceptor_idx: int) -> Optional[float]:
@@ -604,7 +604,7 @@ def render_protein_cartoon(painter, molecule: Molecule,
     if vertices is None or len(vertices) == 0:
         return
         
-    print(f"[Performance] Mesh generation took {time.time()-t0_mesh:.3f}s for {len(vertices)} vertices")
+    # print(f"[Performance] Mesh generation took {time.time()-t0_mesh:.3f}s for {len(vertices)} vertices")
 
     t0_transform = time.time()
     # 2. Apply camera transformations (match MolViewer3D order: Ry then Rx then Rz)
@@ -641,7 +641,7 @@ def render_protein_cartoon(painter, molecule: Molecule,
     v_screen[:, 0] += width / 2 + pan_x
     v_screen[:, 1] = height / 2 + pan_y - v_screen[:, 1] # Invert Y to match sy = cy - y2*zoom
     
-    print(f"[Performance] Transformations took {time.time()-t0_transform:.3f}s")
+    # print(f"[Performance] Transformations took {time.time()-t0_transform:.3f}s")
     
     t0_render = time.time()
     
@@ -763,7 +763,7 @@ def render_protein_cartoon(painter, molecule: Molecule,
         render_protein_cartoon._img_cache = {}
     render_protein_cartoon._img_cache = {'key': cache_key, 'img': qimg}
     
-    print(f"[Performance] Render & Draw (QPainter) took {time.time()-t0_render:.3f}s. Total: {time.time()-t0_total:.3f}s")
+    # print(f"[Performance] Render & Draw (QPainter) took {time.time()-t0_render:.3f}s. Total: {time.time()-t0_total:.3f}s")
 
 
 

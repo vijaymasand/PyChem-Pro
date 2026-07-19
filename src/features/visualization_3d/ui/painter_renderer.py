@@ -901,7 +901,7 @@ class PainterRenderer:
                 vertices, triangles, colors, cache_time = cached_data
                 # Use cache if it's less than 5 seconds old
                 if current_time - cache_time < 5.0:
-                    print(f"[Performance] Using cached mesh for {len(vertices)} vertices")
+                    # print(f"[Performance] Using cached mesh for {len(vertices)} vertices")
                     # Draw cached mesh directly
                     from src.features.visualization_3d.services.protein_rendering import draw_cached_mesh
                     draw_cached_mesh(painter, vertices, triangles, colors, v.zoom)
@@ -953,12 +953,12 @@ class PainterRenderer:
             if mesh_data and hasattr(self, '_mesh_cache'):
                 vertices, triangles, colors = mesh_data
                 self._mesh_cache[mol_id] = (vertices, triangles, colors, current_time)
-                print(f"[Performance] Cached mesh with {len(vertices)} vertices")
+                # print(f"[Performance] Cached mesh with {len(vertices)} vertices")
 
         except Exception as e:
-            print(f"[Performance] Error in protein rendering: {e}")
+            # print(f"[Performance] Error in protein rendering: {e}")
             import traceback
-            traceback.print_exc()
+            # traceback.print_exc()
 
             # Ensure SS is propagated to atoms for fallback rendering
             try:

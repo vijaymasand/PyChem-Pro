@@ -76,7 +76,7 @@ class RendererFactory:
         # Use lower threshold for proteins to ensure OpenGL acceleration
         threshold = PROTEIN_ATOM_THRESHOLD if is_protein else ATOM_THRESHOLD
 
-        print(f"[DEBUG] should_use_gl: n={n}, is_protein={is_protein}, threshold={threshold}, result={n >= threshold}")
+        # print(f"[DEBUG] should_use_gl: n={n}, is_protein={is_protein}, threshold={threshold}, result={n >= threshold}")
         return n >= threshold
 
     def check_gl_available(self, gl_widget) -> bool:
@@ -101,10 +101,10 @@ class RendererFactory:
             # If gl_available is None, it hasn't initialized yet, but we should assume it's available
             # so that it gets shown and initializeGL() runs.
             self._gl_available = gl_widget.gl_available is not False
-            print(f"[DEBUG] check_gl_available: gl_widget.gl_available={gl_widget.gl_available}")
+            # print(f"[DEBUG] check_gl_available: gl_widget.gl_available={gl_widget.gl_available}")
         else:
             self._gl_available = False
-            print(f"[DEBUG] check_gl_available: gl_widget is None or has no gl_available attribute")
+            # print(f"[DEBUG] check_gl_available: gl_widget is None or has no gl_available attribute")
 
         if self._gl_available:
             logger.info("OpenGL renderer available -- will use for large molecules")
