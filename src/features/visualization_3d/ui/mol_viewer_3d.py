@@ -902,18 +902,20 @@ class MolViewer3D(QWidget):
             # Debug logging
             is_protein = getattr(molecule, 'properties', {}).get('is_protein', False)
             n_atoms = len(molecule.atoms) if hasattr(molecule, 'atoms') else 0
-            print(f"[DEBUG] set_molecule: is_protein={is_protein}, n_atoms={n_atoms}")
+            # print(f"[DEBUG] set_molecule: is_protein={is_protein}, n_atoms={n_atoms}")
             
             # Check size threshold
             if factory.should_use_gl(molecule):
                 # Ensure the GL widget actually succeeded in initialisation
                 if factory.check_gl_available(self.gl_viewer):
                     use_gl = True
-                    print(f"[DEBUG] OpenGL available and threshold met, using GL")
+                    # print(f"[DEBUG] OpenGL available and threshold met, using GL")
                 else:
-                    print(f"[DEBUG] OpenGL not available (gl_available=False)")
+                    # print(f"[DEBUG] OpenGL not available (gl_available=False)")
+                    pass
             else:
-                print(f"[DEBUG] Threshold not met for GL")
+                # print(f"[DEBUG] Threshold not met for GL")
+                pass
         
         if use_gl:
             # Sync camera parameters from software to GL before switching
@@ -928,7 +930,7 @@ class MolViewer3D(QWidget):
             self.active_viewer = self.gl_viewer
             self.stacked.setCurrentWidget(self.gl_viewer)
             self.gl_viewer.set_molecule(molecule)
-            print("[Viewer3D] Dynamic switch: Using accelerated OpenGL shaders (GPU)")
+            # print("[Viewer3D] Dynamic switch: Using accelerated OpenGL shaders (GPU)")
         else:
             # Sync camera parameters from GL to software before switching
             if self.active_viewer == self.gl_viewer:
@@ -942,7 +944,7 @@ class MolViewer3D(QWidget):
             self.active_viewer = self.software_viewer
             self.stacked.setCurrentWidget(self.software_viewer)
             self.software_viewer.set_molecule(molecule)
-            print("[Viewer3D] Dynamic switch: Using QPainter software engine (CPU)")
+            # print("[Viewer3D] Dynamic switch: Using QPainter software engine (CPU)")
 
     def clear(self):
         self.software_viewer.clear()

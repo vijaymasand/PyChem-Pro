@@ -60,6 +60,7 @@ from src.plugins.plugin_types import PluginInfo, PluginType
 # OASA Bridge
 from src.vendors.oasa_bridge import domain_to_oasa_mol
 import src.vendors.oasa.coords_generator as oasa_cg
+from src.core.domain.models.bond import BondType
 
 # =============================================================================
 # Style Constants
@@ -105,6 +106,97 @@ INTERACTION_STYLES: Dict[str, Dict[str, Any]] = {
     "Sulfur-Contact": {"c": "#FBC02D", "s": Qt.DotLine}, 
     "Contact": {"c": VHM_COLORS["Contact"], "s": Qt.DotLine}
 }
+
+# =============================================================================
+def perceive_bond_orders_from_3d(mol):
+    """
+    Perceive bond orders (Single, Double, Triple, Aromatic) from 3D coordinates of a molecule.
+    Modifies the bond.bond_type in place.
+    """
+    from src.core.domain.models.bond import BondType
+    
+    rings = mol.find_rings()
+    aromatic_bonds = set()
+    
+    # 1. Identify Aromatic Rings
+    for ring in rings:
+        if len(ring) in (5, 6):
+            ring_atoms = [mol.atoms[idx] for idx in ring]
+            if all(a.symbol in ('C', 'N', 'O', 'S') for a in ring_atoms):
+                is_ring_aromatic = True
+                ring_edges = []
+                for i in range(len(ring)):
+                    idx1 = ring[i]
+                    idx2 = ring[(i + 1) % len(ring)]
+                    
+                    # find bond
+                    bond = None
+                    for neighbor_idx, bond_idx in mol._adjacency.get(idx1, []):
+                        if neighbor_idx == idx2:
+                            bond = mol.bonds[bond_idx]
+                            break
+                            
+                    if not bond:
+                        is_ring_aromatic = False
+                        break
+                        
+                    a1 = mol.atoms[idx1]
+                    a2 = mol.atoms[idx2]
+                    if a1.has_coords and a2.has_coords:
+                        dist = math.dist(a1.coords, a2.coords)
+                        if not (1.28 <= dist <= 1.48):
+                            is_ring_aromatic = False
+                            break
+                    else:
+                        is_ring_aromatic = False
+                        break
+                    ring_edges.append(bond)
+                
+                if is_ring_aromatic:
+                    for idx in ring:
+                        mol.atoms[idx].is_aromatic = True
+                    for bond in ring_edges:
+                        aromatic_bonds.add(bond)
+                        bond.bond_type = BondType.AROMATIC
+
+    # 2. Assign standard double/triple/single bonds based on 3D distance thresholds
+    for bond in mol.bonds:
+        if bond in aromatic_bonds:
+            continue
+            
+        a1 = mol.atoms[bond.begin_atom_idx]
+        a2 = mol.atoms[bond.end_atom_idx]
+        if not (a1.has_coords and a2.has_coords):
+            continue
+            
+        dist = math.dist(a1.coords, a2.coords)
+        symbols = {a1.symbol, a2.symbol}
+        btype = BondType.SINGLE
+        
+        if symbols == {'C', 'C'}:
+            if dist < 1.25:
+                btype = BondType.TRIPLE
+            elif dist < 1.40:
+                btype = BondType.DOUBLE
+        elif symbols == {'C', 'N'}:
+            if dist < 1.18:
+                btype = BondType.TRIPLE
+            elif dist < 1.36:
+                btype = BondType.DOUBLE
+        elif symbols == {'C', 'O'}:
+            if dist < 1.28:
+                btype = BondType.DOUBLE
+        elif symbols == {'N', 'N'}:
+            if dist < 1.28:
+                btype = BondType.DOUBLE
+        elif symbols == {'N', 'O'}:
+            if dist < 1.28:
+                btype = BondType.DOUBLE
+        elif symbols == {'S', 'O'}:
+            if dist < 1.50:
+                btype = BondType.DOUBLE
+                
+        bond.bond_type = btype
 
 # =============================================================================
 # Graphics Classes
@@ -736,6 +828,11 @@ class DockingPoseVisualizerWidget(QWidget):
                     mini_mol.add_bond(idx_map[bond.begin_atom_idx], idx_map[bond.end_atom_idx], bond.bond_type)
             mini_mol.end_bulk_load()
             
+            # If the molecule has no bond orders (like when loaded from PDB), perceive them from 3D coordinates
+            has_bond_orders = any(bond.bond_type in (BondType.DOUBLE, BondType.TRIPLE, BondType.AROMATIC) for bond in mini_mol.bonds)
+            if not has_bond_orders:
+                perceive_bond_orders_from_3d(mini_mol)
+            
             o_mol, o_atom_map = domain_to_oasa_mol(mini_mol)
             
             # Stable Mapping: Tag each OASA atom with its original PyChem index
@@ -746,16 +843,43 @@ class DockingPoseVisualizerWidget(QWidget):
                     # Stash original index in the OASA atom object itself
                     o_atom.pychem_orig_idx = orig_idx
             
-            o_mol.remove_unimportant_hydrogens()
-            
             try:
-                o_mol.add_missing_bond_orders()
-                o_mol.mark_aromatic_bonds()
-                o_mol.localize_aromatic_bonds()
-            except: 
+                o_mol.remove_unimportant_hydrogens()
+            except:
                 pass
             
-            o_mol.add_missing_hydrogens()
+            has_bond_orders = any(bond.bond_type in (BondType.DOUBLE, BondType.TRIPLE, BondType.AROMATIC) for bond in mini_mol.bonds)
+            
+            if not has_bond_orders:
+                try:
+                    o_mol.add_missing_bond_orders()
+                except Exception as e:
+                    logging.debug(f"OASA add_missing_bond_orders failed: {e}")
+            
+            # Set aromatic bond orders to 4 so OASA's localization algorithm recognizes them
+            for edge in o_mol.edges:
+                if getattr(edge, 'aromatic', False):
+                    edge.order = 4
+            
+            try:
+                o_mol.mark_aromatic_bonds()
+            except Exception as e:
+                logging.debug(f"OASA mark_aromatic_bonds failed: {e}")
+                
+            try:
+                o_mol.localize_aromatic_bonds()
+            except Exception as e:
+                logging.debug(f"OASA localize_aromatic_bonds failed: {e}")
+            
+            try:
+                o_mol.add_missing_hydrogens()
+            except Exception as e:
+                logging.debug(f"OASA add_missing_hydrogens failed: {e}")
+                
+            # Sanitize bond orders (e.g. resolve order 4 back to single bond order 1)
+            for edge in o_mol.edges:
+                if getattr(edge, 'order', 1) not in (1, 2, 3):
+                    edge.order = 1
             generator = oasa_cg.coords_generator(bond_length=1.0)
             generator.calculate_coords(o_mol, force=1)
             

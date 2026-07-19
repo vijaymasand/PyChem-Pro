@@ -270,8 +270,8 @@ zoom : float
                     f'Renderer: {self._gl_renderer_string}'
                 )
 
-            print(f'[GL] Context ready — OpenGL {major}.{minor}  '
-                  f'Renderer: {self._gl_renderer_string}')
+            # print(f'[GL] Context ready — OpenGL {major}.{minor}  '
+            #       f'Renderer: {self._gl_renderer_string}')
 
             # Basic GL state setup
             bg = self.bg_color
@@ -295,12 +295,12 @@ zoom : float
             self._vao_lines.create()
 
             self.gl_available = True
-            print(f"[GL] Context ready — OpenGL {major}.{minor} Renderer: {self._gl_renderer_string}")
-            print(f"[GL] Initialization complete in {time.time()-t_init:.3f}s")
+            # print(f"[GL] Context ready — OpenGL {major}.{minor} Renderer: {self._gl_renderer_string}")
+            # print(f"[GL] Initialization complete in {time.time()-t_init:.3f}s")
 
         except Exception as exc:
-            print(f'[GL] OpenGL initialisation failed: {exc}')
-            traceback.print_exc()
+            # print(f'[GL] OpenGL initialisation failed: {exc}')
+            # traceback.print_exc()
             self.gl_available = False
         self.selected_atoms = set()
 
@@ -399,11 +399,13 @@ zoom : float
             # Log only if frame is very slow
             dt = time.time() - t_frame
             if dt > 0.1: # < 10 FPS
-                print(f"[Performance] Slow frame: {dt:.3f}s")
+                # print(f"[Performance] Slow frame: {dt:.3f}s")
+                pass
 
         except Exception as e:
-            print(f"[GL] Render error: {e}")
-            traceback.print_exc()
+            # print(f"[GL] Render error: {e}")
+            # traceback.print_exc()
+            pass
             
         # Draw 2D overlays (Selection rings, interactions, labels) using QPainter over the GL surface
         if (self.selected_atoms or self.interaction_lines or self.labels or self.labeled_residues) and self._positions is not None:

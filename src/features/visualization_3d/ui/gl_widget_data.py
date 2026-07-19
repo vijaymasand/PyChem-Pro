@@ -252,7 +252,7 @@ class GLDataMixin:
                     self._vbo_mesh.bind()
                     self._vbo_mesh.allocate(mdata.tobytes(), len(mdata.tobytes()))
                     self._ibo_mesh = None
-                    print(f"[GL] Mesh buffer updated in {time.time()-t_mesh:.3f}s")
+                    # print(f"[GL] Mesh buffer updated in {time.time()-t_mesh:.3f}s")
             else:
                 self._vbo_mesh = None
                 
@@ -320,10 +320,10 @@ class GLDataMixin:
                 self._vbo_lines = None
                 self._num_lines = 0
 
-            print(f"[Performance] Total GL Buffer update took {time.time()-t_upd:.3f}s")
+            # print(f"[Performance] Total GL Buffer update took {time.time()-t_upd:.3f}s")
 
         except Exception as e:
-            print(f"[GL] Buffer update error: {e}")
+            pass # print(f"[GL] Buffer update error: {e}")
 
     def _pack_bonds(self, mol, atoms, atom_colors):
         """Pack bond endpoint data into flat numpy arrays."""

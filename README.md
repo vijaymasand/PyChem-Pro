@@ -75,6 +75,7 @@ This makes PyChem-Pro:
 - Center of Mass and Shrake-Rupley SASA
 - **Structural alignment / superposition** — Kabsch fit with iterative outlier rejection; atom correspondence by index, element, or protein Cα sequence (Needleman-Wunsch); RMSD reporting (pure NumPy)
 - **QSAR Data Splitting** — 7 partitioning algorithms (Random, Scaffold, CADEX, D-Optimal, Sphere Exclusion, Boruta, Duplex) with PCA visualization and KS-test evaluation.
+- **Chemical Space Visualization** — Featurization, mapping, and PCA projections for analyzing chemical space coverage of datasets.
 
 ### Visualization
 - Hardware-aware software 3D rendering (QPainter with gradient sphere shading)
@@ -97,7 +98,7 @@ This makes PyChem-Pro:
 ### Plugin System
 - `BasePlugin` / `PluginWidget` API for custom analysis, visualization, I/O, and utility plugins
 - Built-in templates for analysis, visualization, and I/O plugin types
-- QSAR modeling, Ramachandran, descriptor pruning, docking pose visualization, molecular weight calculator — all shipped as plugins
+- QSAR modeling, Ramachandran, descriptor pruning, docking pose visualization (featuring 3D distance-based bond order perception and robust aromatic Kekulization), molecular weight calculator — all shipped as plugins
 
 ---
 
@@ -674,6 +675,9 @@ Drop the file into `plugins/` and restart PyChem, or use **Plugins → Installed
 | `qsar_rfa_mars_plugin.py` | Random Forest + MARS QSAR |
 | `docking_pose_visualizer.py` | Docking pose comparison |
 | `DescriptorPruningApp.py` | Descriptor correlation pruning |
+| `batch_3d_converter_plugin.py` | Batch 3D coordinate generation and format conversion |
+| `pharmacophore_features.py` | Extract, analyze, and map pharmacophore features in 3D |
+| `qsar_curator_gui.py` | Chemical structure curation and data preparation for QSAR |
 | `example_analysis_plugin.py` | Template for analysis plugins |
 | `example_visualization_plugin.py` | Template for visualization plugins |
 
