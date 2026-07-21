@@ -8,12 +8,14 @@ from sklearn.cluster import KMeans, DBSCAN
 from sklearn.ensemble import IsolationForest
 import numpy as np
 import logging
+from src.algorithms.umap import UMAP
 
 class AnalysisEngine:
     def __init__(self):
         self.embedding = None
         self.clusters = None
         self.outliers = None
+        self.umap_model = None
 
     def run_pca(self, X: np.ndarray, n_components: int = 2):
         """Runs PCA embedding."""
@@ -36,6 +38,35 @@ class AnalysisEngine:
         except Exception as e:
             logging.error(f"t-SNE Error: {e}")
             return False, str(e)
+
+    def run_umap(
+        self,
+        X: np.ndarray,
+        n_neighbors: int = 15,
+        min_dist: float = 0.1,
+        n_components: int = 2,
+        metric: str = 'euclidean',
+        n_epochs: int = 200,
+        n_jobs: int = None,
+        random_state: int = 42
+    ):
+        """Runs UMAP embedding with multiprocessing acceleration."""
+        try:
+            self.umap_model = UMAP(
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                n_components=n_components,
+                metric=metric,
+                n_epochs=n_epochs,
+                n_jobs=n_jobs,
+                random_state=random_state
+            )
+            self.embedding = self.umap_model.fit_transform(X)
+            return True, "UMAP completed"
+        except Exception as e:
+            logging.error(f"UMAP Error: {e}")
+            return False, str(e)
+
 
     def run_kmeans(self, n_clusters: int = 5):
         """Runs K-Means clustering on the embeddings."""
