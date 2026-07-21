@@ -15,7 +15,7 @@
 
 **Financial support/Sponsorship**
 🎉 Another PyChem-Pro Milestone Update!
-I am incredibly proud to share that PyChem-Pro has received its second official financial support from Dr. Asif Khan (Department of Pharmacy, State University of Maringà, Maringa, PR Brazil). 
+I am incredibly proud to share that PyChem-Pro has received another official financial support from Dr. N.Murali, MD, AcuroRx, USA. 
 
 ---
 
@@ -75,7 +75,7 @@ This makes PyChem-Pro:
 - Center of Mass and Shrake-Rupley SASA
 - **Structural alignment / superposition** — Kabsch fit with iterative outlier rejection; atom correspondence by index, element, or protein Cα sequence (Needleman-Wunsch); RMSD reporting (pure NumPy)
 - **QSAR Data Splitting** — 7 partitioning algorithms (Random, Scaffold, CADEX, D-Optimal, Sphere Exclusion, Boruta, Duplex) with PCA visualization and KS-test evaluation.
-- **Chemical Space Visualization** — Featurization, mapping, and PCA projections for analyzing chemical space coverage of datasets.
+- **Chemical Space Visualization** — Featurization, mapping, t-SNE, PCA, and UMAP (very slow) projections for analyzing chemical space coverage of datasets.
 
 ### Visualization
 - Hardware-aware software 3D rendering (QPainter with gradient sphere shading)
