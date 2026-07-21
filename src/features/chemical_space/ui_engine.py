@@ -3,6 +3,7 @@ Chemical Space Visualization - UI Engine
 PyQt5 / PySide6 User Interface with Matplotlib integration.
 """
 import sys
+import os
 import numpy as np
 import pandas as pd
 from typing import Optional
@@ -168,23 +169,75 @@ class ChemicalSpaceWindow(QMainWindow):
         left_layout.addWidget(feat_group)
 
         # 3. Dimensionality Reduction
-        dim_group = QGroupBox("3. Embedding (PCA/t-SNE)")
+        dim_group = QGroupBox("3. Embedding (PCA/t-SNE/UMAP)")
         dim_layout = QVBoxLayout(dim_group)
         
         method_layout = QHBoxLayout()
         method_layout.addWidget(QLabel("Method:"))
         self.combo_method = QComboBox()
-        self.combo_method.addItems(["t-SNE", "PCA"])
+        self.combo_method.addItems(["PCA", "t-SNE", "UMAP"])
         method_layout.addWidget(self.combo_method)
         dim_layout.addLayout(method_layout)
 
-        tsne_layout = QHBoxLayout()
+        # UMAP Params Layout
+        self.umap_param_widget = QWidget()
+        umap_param_layout = QVBoxLayout(self.umap_param_widget)
+        umap_param_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Caution Label
+        lbl_umap_caution = QLabel("⚠️ Caution: Pure NumPy UMAP is computationally intensive and may be slow on large datasets.")
+        lbl_umap_caution.setStyleSheet("color: #b7791f; font-size: 11px; font-weight: bold; background-color: #fefcbf; border: 1px solid #f6e05e; border-radius: 4px; padding: 4px;")
+        lbl_umap_caution.setWordWrap(True)
+        umap_param_layout.addWidget(lbl_umap_caution)
+
+        knn_layout = QHBoxLayout()
+        knn_layout.addWidget(QLabel("UMAP Neighbors:"))
+        self.spin_umap_neighbors = QSpinBox()
+        self.spin_umap_neighbors.setRange(2, 200)
+        self.spin_umap_neighbors.setValue(15)
+        knn_layout.addWidget(self.spin_umap_neighbors)
+        umap_param_layout.addLayout(knn_layout)
+
+        dist_layout = QHBoxLayout()
+        dist_layout.addWidget(QLabel("UMAP Min Dist:"))
+        self.spin_umap_min_dist = QDoubleSpinBox()
+        self.spin_umap_min_dist.setRange(0.001, 0.99)
+        self.spin_umap_min_dist.setSingleStep(0.05)
+        self.spin_umap_min_dist.setValue(0.1)
+        dist_layout.addWidget(self.spin_umap_min_dist)
+        umap_param_layout.addLayout(dist_layout)
+
+        metric_layout = QHBoxLayout()
+        metric_layout.addWidget(QLabel("UMAP Metric:"))
+        self.combo_umap_metric = QComboBox()
+        self.combo_umap_metric.addItems(["euclidean", "tanimoto", "cosine", "manhattan", "hamming"])
+        metric_layout.addWidget(self.combo_umap_metric)
+        umap_param_layout.addLayout(metric_layout)
+
+        jobs_layout = QHBoxLayout()
+        jobs_layout.addWidget(QLabel("CPU Cores (Jobs):"))
+        self.spin_umap_jobs = QSpinBox()
+        cpu_cnt = os.cpu_count() or 4
+        self.spin_umap_jobs.setRange(1, cpu_cnt)
+        self.spin_umap_jobs.setValue(max(1, cpu_cnt // 2))
+        jobs_layout.addWidget(self.spin_umap_jobs)
+        umap_param_layout.addLayout(jobs_layout)
+
+        dim_layout.addWidget(self.umap_param_widget)
+
+        # t-SNE Params Layout
+        self.tsne_param_widget = QWidget()
+        tsne_layout = QHBoxLayout(self.tsne_param_widget)
+        tsne_layout.setContentsMargins(0, 0, 0, 0)
         tsne_layout.addWidget(QLabel("t-SNE Perplexity:"))
         self.spin_perplexity = QSpinBox()
         self.spin_perplexity.setRange(5, 100)
         self.spin_perplexity.setValue(30)
         tsne_layout.addWidget(self.spin_perplexity)
-        dim_layout.addLayout(tsne_layout)
+        dim_layout.addWidget(self.tsne_param_widget)
+
+        self.combo_method.currentTextChanged.connect(self._on_method_changed)
+        self._on_method_changed(self.combo_method.currentText())
 
         left_layout.addWidget(dim_group)
 
@@ -331,6 +384,11 @@ class ChemicalSpaceWindow(QMainWindow):
         self.worker.finished.connect(self.on_featurization_complete)
         self.worker.start()
 
+    def _on_method_changed(self, method_name: str):
+        if hasattr(self, 'umap_param_widget') and hasattr(self, 'tsne_param_widget'):
+            self.umap_param_widget.setVisible(method_name == "UMAP")
+            self.tsne_param_widget.setVisible(method_name == "t-SNE")
+
     def on_featurization_complete(self, success, msg, result):
         self.progress_dialog.close()
         if not success:
@@ -353,11 +411,25 @@ class ChemicalSpaceWindow(QMainWindow):
         self.progress_dialog.setRange(0, 0) # Indeterminate
         
         method = self.combo_method.currentText()
-        perp = self.spin_perplexity.value()
 
         if method == "PCA":
             self.worker = WorkerThread(self.analysis_engine.run_pca, self.X, 2)
+        elif method == "UMAP":
+            n_neighbors = self.spin_umap_neighbors.value()
+            min_dist = self.spin_umap_min_dist.value()
+            metric = self.combo_umap_metric.currentText()
+            n_jobs = self.spin_umap_jobs.value()
+            self.worker = WorkerThread(
+                self.analysis_engine.run_umap,
+                self.X,
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                n_components=2,
+                metric=metric,
+                n_jobs=n_jobs
+            )
         else:
+            perp = self.spin_perplexity.value()
             self.worker = WorkerThread(self.analysis_engine.run_tsne, self.X, perp)
 
         self.worker.finished.connect(self.on_embedding_complete)
