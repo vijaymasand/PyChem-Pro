@@ -29,6 +29,7 @@ We are incredibly grateful to the following individuals and institutions who hav
 ### ☕ Individual Supporters (via Buy Me a Coffee / GitHub Sponsors)
 *   **Anonymous Contributor** – From Yeshiva University, New York, USA. *Thank you for your generous support!*
 *   **Dr. Asif Khan** - Department of Pharmacy, State University of Maringà, Maringa, PR Brazil. *Thank you for your generous support!*
+*   **Dr. N.Murali** - MD, AcuroRx, USA. *Thank you for your generous support!*
 
 *(Note: If you have contributed and would like your name, lab link, or research focus displayed here, please open an issue or message us in our community groups.)*
 
