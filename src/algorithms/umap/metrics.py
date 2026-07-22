@@ -96,9 +96,10 @@ def _tanimoto_distances(X: np.ndarray, Y: np.ndarray = None) -> np.ndarray:
     if Y is None:
         Y = X
 
-    dot_product = np.dot(X, Y.T)
-    norm_x = np.sum(X ** 2, axis=1, keepdims=True)
-    norm_y = np.sum(Y ** 2, axis=1, keepdims=True).T
+    # Use einsum for potentially better performance on some systems
+    dot_product = np.einsum('ij,kj->ik', X, Y, optimize=True)
+    norm_x = np.einsum('ij->i', X ** 2, optimize=True).reshape(-1, 1)
+    norm_y = np.einsum('ij->i', Y ** 2, optimize=True).reshape(1, -1)
 
     denominator = norm_x + norm_y - dot_product
     denominator = np.maximum(denominator, 1e-12)
@@ -106,13 +107,14 @@ def _tanimoto_distances(X: np.ndarray, Y: np.ndarray = None) -> np.ndarray:
     return 1.0 - similarity
 
 def _dice_distances(X: np.ndarray, Y: np.ndarray = None) -> np.ndarray:
-    """Computes Dice distance matrix."""
+    """Computes Dice distance matrix using optimized einsum."""
     if Y is None:
         Y = X
 
-    dot_product = np.dot(X, Y.T)
-    norm_x = np.sum(X ** 2, axis=1, keepdims=True)
-    norm_y = np.sum(Y ** 2, axis=1, keepdims=True).T
+    # Use einsum for potentially better performance
+    dot_product = np.einsum('ij,kj->ik', X, Y, optimize=True)
+    norm_x = np.einsum('ij->i', X ** 2, optimize=True).reshape(-1, 1)
+    norm_y = np.einsum('ij->i', Y ** 2, optimize=True).reshape(1, -1)
 
     denominator = norm_x + norm_y
     denominator = np.maximum(denominator, 1e-12)

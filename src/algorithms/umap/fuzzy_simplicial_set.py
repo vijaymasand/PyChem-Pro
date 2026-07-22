@@ -4,6 +4,7 @@ Follows UMAP mathematical formulations for Riemannian metric local adaptation.
 """
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+from scipy.sparse import csr_matrix
 from .metrics import resolve_n_jobs
 
 def _smooth_knn_worker(args):
@@ -109,6 +110,7 @@ def fuzzy_simplicial_set(
 ) -> np.ndarray:
     """
     Builds the high-dimensional fuzzy graph / fuzzy simplicial set matrix P in parallel.
+    Optimized with sparse matrices for memory efficiency.
     
     Parameters
     ----------
@@ -128,32 +130,51 @@ def fuzzy_simplicial_set(
     n_jobs = resolve_n_jobs(n_jobs)
     rho, sigma = smooth_knn_dist(knn_dists, k=n_neighbors, n_jobs=n_jobs)
 
-    A = np.zeros((n_samples, n_samples), dtype=np.float64)
+    # Build sparse matrix directly for memory efficiency
+    rows = []
+    cols = []
+    data = []
 
     def _graph_worker(chunk_idx):
+        local_rows = []
+        local_cols = []
+        local_data = []
         for i in chunk_idx:
             indices = knn_indices[i]
             dists = D[i, indices]
+            # Vectorized computation
             val = np.exp(-np.maximum(0.0, dists - rho[i]) / np.maximum(sigma[i], 1e-12))
-            A[i, indices] = val
+            local_rows.extend([i] * len(indices))
+            local_cols.extend(indices.tolist())
+            local_data.extend(val.tolist())
+        return local_rows, local_cols, local_data
 
     if n_samples <= 200 or n_jobs == 1:
-        _graph_worker(np.arange(n_samples))
+        rows, cols, data = _graph_worker(np.arange(n_samples))
     else:
         chunks = np.array_split(np.arange(n_samples), n_jobs)
         with ThreadPoolExecutor(max_workers=n_jobs) as executor:
-            list(executor.map(_graph_worker, chunks))
+            results = list(executor.map(_graph_worker, chunks))
+            for r, c, d in results:
+                rows.extend(r)
+                cols.extend(c)
+                data.extend(d)
 
-    # Symmetrization via Fuzzy Set Union: A + A^T - A * A^T
+    # Create sparse matrix
+    A = csr_matrix((data, (rows, cols)), shape=(n_samples, n_samples), dtype=np.float64)
+
+    # Symmetrization via sparse operations
     A_transpose = A.T
-    fuzzy_union = A + A_transpose - A * A_transpose
-    fuzzy_intersection = A * A_transpose
+    fuzzy_union = A + A_transpose - A.multiply(A_transpose)
+    fuzzy_intersection = A.multiply(A_transpose)
 
     P = set_op_mix_ratio * fuzzy_union + (1.0 - set_op_mix_ratio) * fuzzy_intersection
-    np.fill_diagonal(P, 0.0)
+    P.setdiag(0.0)
 
-    p_max = np.max(P)
+    # Normalize
+    p_max = P.max()
     if p_max > 0:
-        P /= p_max
+        P = P / p_max
 
-    return P
+    # Convert to dense for compatibility with layout optimization
+    return P.toarray()

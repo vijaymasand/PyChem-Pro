@@ -33,6 +33,7 @@ License:
     MIT
 
 Changelog:
+    2.4.0 - Distance-proportional residue placement and biochemical residue-type coloring
     2.3.0 - Implemented PCA alignment and spatially-aware residue spreading logic
     2.2.1 - Added comprehensive error handling and documentation
     2.2.0 - Initial release with interactive dragging
@@ -105,6 +106,44 @@ INTERACTION_STYLES: Dict[str, Dict[str, Any]] = {
     "Pi-Stacking": {"c": VHM_COLORS["Pi-Stacking"], "s": Qt.SolidLine},
     "Sulfur-Contact": {"c": "#FBC02D", "s": Qt.DotLine}, 
     "Contact": {"c": VHM_COLORS["Contact"], "s": Qt.DotLine}
+}
+
+# =============================================================================
+# Residue Classification
+# =============================================================================
+
+#: Biochemical classification of standard amino acid residues.
+#: Maps three-letter residue names to category labels.
+RESIDUE_CATEGORIES: Dict[str, str] = {
+    # Acidic (negatively charged at pH 7)
+    'ASP': 'Acidic', 'GLU': 'Acidic',
+    # Basic (positively charged at pH 7)
+    'ARG': 'Basic', 'LYS': 'Basic', 'HIS': 'Basic',
+    # Polar uncharged
+    'SER': 'Polar', 'THR': 'Polar', 'ASN': 'Polar', 'GLN': 'Polar',
+    'CYS': 'Polar', 'TYR': 'Polar',
+    # Hydrophobic (nonpolar aliphatic)
+    'ALA': 'Hydrophobic', 'VAL': 'Hydrophobic', 'LEU': 'Hydrophobic',
+    'ILE': 'Hydrophobic', 'PRO': 'Hydrophobic', 'MET': 'Hydrophobic',
+    # Aromatic (nonpolar aromatic)
+    'PHE': 'Aromatic', 'TRP': 'Aromatic',
+    # Glycine (special — no side chain)
+    'GLY': 'Glycine',
+    # Water and ions
+    'HOH': 'Water/Ion', 'WAT': 'Water/Ion', 'TIP': 'Water/Ion',
+}
+
+#: Fill colors for residue category nodes.
+#: Semi-transparent fills applied to the node background.
+RESIDUE_FILL_COLORS: Dict[str, str] = {
+    'Acidic':       '#E53935',   # Red — negatively charged
+    'Basic':        '#1E88E5',   # Blue — positively charged
+    'Polar':        '#43A047',   # Green — polar uncharged
+    'Hydrophobic':  '#FB8C00',   # Orange — nonpolar
+    'Aromatic':     '#AB47BC',   # Purple — aromatic rings
+    'Glycine':      '#8E24AA',   # Deep purple — special
+    'Water/Ion':    '#78909C',   # Blue-gray — non-amino-acid
+    'Unknown':      '#9E9E9E',   # Gray — unrecognized
 }
 
 # =============================================================================
@@ -203,15 +242,36 @@ def perceive_bond_orders_from_3d(mol):
 # =============================================================================
 
 class ResidueNodeItem(QGraphicsEllipseItem):
-    """Custom QGraphicsItem for residue nodes with embedded text labels."""
-    def __init__(self, x, y, radius, name, res_id, color):
+    """Custom QGraphicsItem for residue nodes with embedded text labels.
+    
+    Args:
+        x, y: Position in scene coordinates.
+        radius: Node circle radius.
+        name: Residue name (e.g. 'ALA').
+        res_id: Residue identifier (e.g. '123A').
+        color: Border color (interaction-type color).
+        fill_color: Optional fill color (residue-category color).
+    """
+    def __init__(self, x, y, radius, name, res_id, color, fill_color=None):
         super().__init__(-radius, -radius, 2 * radius, 2 * radius)
         self.setPos(x, y)
-        self.setBrush(QBrush(Qt.white))
+        
+        # Fill: semi-transparent residue category color, or white fallback
+        if fill_color:
+            fc = QColor(fill_color)
+            fc.setAlpha(50)  # ~20% opacity for subtle tint
+            self.setBrush(QBrush(fc))
+        else:
+            self.setBrush(QBrush(Qt.white))
+        
         self.setPen(QPen(QColor(color), 2.5))
         self.setZValue(10)
         self.setFlag(QGraphicsEllipseItem.ItemIsMovable)
         self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges)
+        
+        # Determine text color for readability on the fill
+        text_color = Qt.black
+        id_color = QColor("#444444")
         
         # Text items
         self.name_text = QGraphicsTextItem(name, self)
@@ -220,11 +280,11 @@ class ResidueNodeItem(QGraphicsEllipseItem):
         # Style text (Increased size for readability)
         font = QFont("Segoe UI", 10, QFont.Bold)
         self.name_text.setFont(font)
-        self.name_text.setDefaultTextColor(Qt.black)
+        self.name_text.setDefaultTextColor(text_color)
         
         id_font = QFont("Segoe UI", 9)
         self.id_text.setFont(id_font)
-        self.id_text.setDefaultTextColor(QColor("#444444"))
+        self.id_text.setDefaultTextColor(id_color)
         
         self.update_text_positions(radius)
         self.line_item = None
@@ -310,19 +370,39 @@ class VisualizerSettingsDialog(QDialog):
         filter_box.setLayout(vlay)
         lay.addWidget(filter_box)
         
-        # Legend (Mini)
-        legend_box = QGroupBox("LEGEND")
+        # Legend (Mini) — Interaction Types
+        legend_box = QGroupBox("INTERACTIONS")
         legend_box.setStyleSheet(f"QGroupBox {{ color: {COLORS['accent2']}; font-weight: bold; border: 1px solid {COLORS['border']}; margin-top: 10px; padding-top: 10px; }}")
         llay = QVBoxLayout()
         for name, color, desc in [
-            ("H-Bond", VHM_COLORS["H-Bond"], "3.5Å"),
-            ("Hydrophobic", VHM_COLORS["Hydrophobic"], "4.5Å"),
-            ("Salt Bridge", VHM_COLORS["Salt Bridge"], "5.0Å"),
+            ("H-Bond", VHM_COLORS["H-Bond"], "< 3.5Å"),
+            ("Hydrophobic", VHM_COLORS["Hydrophobic"], "< 4.5Å"),
+            ("Salt Bridge", VHM_COLORS["Salt Bridge"], "< 5.0Å"),
         ]:
             lbl = QLabel(f"<span style='color:{color};'>●</span> <b>{name}</b> ({desc})")
             llay.addWidget(lbl)
         legend_box.setLayout(llay)
         lay.addWidget(legend_box)
+        
+        # Legend — Residue Categories (fill colors)
+        res_legend_box = QGroupBox("RESIDUE TYPES")
+        res_legend_box.setStyleSheet(f"QGroupBox {{ color: {COLORS['accent2']}; font-weight: bold; border: 1px solid {COLORS['border']}; margin-top: 10px; padding-top: 10px; }}")
+        rlay = QVBoxLayout()
+        for cat_name, cat_color in RESIDUE_FILL_COLORS.items():
+            cat_desc = {
+                'Acidic': 'ASP, GLU (−)',
+                'Basic': 'ARG, LYS, HIS (+)',
+                'Polar': 'SER, THR, ASN, GLN…',
+                'Hydrophobic': 'ALA, VAL, LEU, ILE…',
+                'Aromatic': 'PHE, TRP',
+                'Glycine': 'GLY',
+                'Water/Ion': 'HOH, WAT',
+                'Unknown': 'Other',
+            }.get(cat_name, '')
+            lbl = QLabel(f"<span style='color:{cat_color};'>■</span> <b>{cat_name}</b> <span style='font-size:9px;'>{cat_desc}</span>")
+            rlay.addWidget(lbl)
+        res_legend_box.setLayout(rlay)
+        lay.addWidget(res_legend_box)
         
         btn_close = QPushButton("APPLY & CLOSE")
         btn_close.setStyleSheet(f"background-color: {COLORS['accent']}; color: white; font-weight: bold; padding: 10px; border-radius: 6px;")
@@ -659,10 +739,20 @@ class DockingPoseVisualizerWidget(QWidget):
             logging.warning(f"Could not align coordinates: {e}")
             return d_coords
 
-    def _resolve_overlaps(self, data: List[Dict], d_coords: Dict[int, Tuple[float, float]], node_radius: float):
+    def _resolve_overlaps(self, data: List[Dict], d_coords: Dict[int, Tuple[float, float]], node_radius: float, lig_r: float):
         """
-        MOE-style residue placement: each residue radiates outward from its
-        interacting ligand atom, away from the ligand centroid.
+        Distance-proportional residue placement: each residue radiates outward
+        from its interacting ligand atom, with its orbit radius proportional to
+        the actual interaction distance.
+
+        Close contacts appear near the ligand; far contacts appear further out.
+        Angular repulsion prevents overlapping nodes.
+        
+        Args:
+            data: List of interaction dicts, each with 'dist', 'ligand_atom_idx', etc.
+            d_coords: Dict of {atom_index: (x, y)} for 2D ligand atom positions.
+            node_radius: Radius of each residue node circle (in scene units).
+            lig_r: Maximum radial extent of the ligand drawing from its centroid.
         """
         if not data:
             return
@@ -674,7 +764,23 @@ class DockingPoseVisualizerWidget(QWidget):
         else:
             cx, cy = 0.0, 0.0
         
+        # ---- Distance-proportional orbit radius ----
+        distances = [d['dist'] for d in data]
+        min_dist = min(distances)
+        max_dist = max(distances)
+        dist_range = max_dist - min_dist if max_dist > min_dist else 1.0
+        
+        # Orbit boundaries: closest residue at min_orbit, farthest at max_orbit
+        min_clearance = max(80, node_radius * 2.2)
+        max_clearance = max(200, node_radius * 5.5)
+        min_orbit = lig_r + min_clearance
+        max_orbit = lig_r + max_clearance
+        
         for d in data:
+            # Linear mapping: distance -> orbit radius
+            t = (d['dist'] - min_dist) / dist_range
+            d['orbit_radius'] = min_orbit + t * (max_orbit - min_orbit)
+            
             lx, ly = d_coords.get(d['ligand_atom_idx'], (cx, cy))
             d['anchor_x'], d['anchor_y'] = lx, ly
             # Direction vector: from centroid THROUGH interacting atom, outward
@@ -697,8 +803,10 @@ class DockingPoseVisualizerWidget(QWidget):
             for i in range(len(data)):
                 j = (i + 1) % len(data)
                 d1, d2 = data[i], data[j]
-                # min_angle based on node width vs circumference
-                min_angle = (node_radius * 3.5) / 350
+                # min_angle accounts for both nodes' orbit radii (closer nodes
+                # subtend a larger angle at the center)
+                avg_orbit = (d1['orbit_radius'] + d2['orbit_radius']) / 2
+                min_angle = (node_radius * 3.5) / max(avg_orbit, 100)
                 diff = d2['angle'] - d1['angle']
                 if diff < 0: diff += 2 * math.pi
                 if diff < min_angle:
@@ -709,15 +817,16 @@ class DockingPoseVisualizerWidget(QWidget):
             if not moved:
                 break
 
-        # Radial dithering
+        # Radial dithering for angularly-close nodes at similar orbit radii
         for i in range(len(data)):
             j = (i + 1) % len(data)
             diff = data[j]['angle'] - data[i]['angle']
             if diff < 0: diff += 2 * math.pi
-            if diff < (node_radius * 2.8) / 350:
-                data[j]['dither'] = node_radius * 1.6
-            else:
-                data[j]['dither'] = 0
+            avg_orbit = (data[i]['orbit_radius'] + data[j]['orbit_radius']) / 2
+            if diff < (node_radius * 2.8) / max(avg_orbit, 100):
+                # Push the outer one slightly further out
+                data[j]['orbit_radius'] += node_radius * 1.6
+            
 
     def auto_render(self, silent: bool = False) -> None:
         """
@@ -982,21 +1091,28 @@ class DockingPoseVisualizerWidget(QWidget):
             data = data[:self.sp_max_res.value()]
             
             node_radius = self.sp_node.value()
-            self._resolve_overlaps(data, d_coords, node_radius)
-            
             lig_r = max([math.hypot(x,y) for x,y in d_coords.values()]) if d_coords else 0
             cx, cy = (sum(x for x,y in d_coords.values())/len(d_coords), sum(y for x,y in d_coords.values())/len(d_coords)) if d_coords else (0,0)
+            
+            # Distance-proportional placement (pass lig_r so orbit scales with distance)
+            self._resolve_overlaps(data, d_coords, node_radius, lig_r)
                 
             counts = {}
+            res_cat_counts = {}  # Track residue categories for stats
             for d in data:
                 angle = d['angle']
                 sx, sy = d.get('anchor_x', cx), d.get('anchor_y', cy)
-                clearance = max(100, node_radius * 2.8) 
-                target_orbit = lig_r + clearance + d.get('dither', 0)
+                # Use per-residue orbit_radius (distance-proportional)
+                target_orbit = d.get('orbit_radius', lig_r + max(100, node_radius * 2.8))
                 rx, ry = cx + target_orbit * math.cos(angle), cy + target_orbit * math.sin(angle)
                 
                 style = INTERACTION_STYLES.get(d['type'], {"c": "gray", "s": Qt.SolidLine})
                 counts[d['type']] = counts.get(d['type'], 0) + 1
+                
+                # Determine residue category fill color
+                res_category = RESIDUE_CATEGORIES.get(d['name'], 'Unknown')
+                fill_color = RESIDUE_FILL_COLORS.get(res_category, RESIDUE_FILL_COLORS['Unknown'])
+                res_cat_counts[res_category] = res_cat_counts.get(res_category, 0) + 1
 
                 # Interaction Line
                 line_pen = QPen(QColor(style['c']), 1.5, style['s'])
@@ -1004,18 +1120,27 @@ class DockingPoseVisualizerWidget(QWidget):
                 line.setZValue(1)
                 line.setOpacity(0.6)
 
-                # Distance Label (Now Draggable)
+                # Distance Label (Now Draggable, with white background for readability)
                 dist_txt = DistanceLabelItem(
                     f"{d['dist']}Å", 
                     style['c'], 
                     QFont("JetBrains Mono", self.sp_dist_fsize.value(), QFont.Bold)
                 )
                 dr = dist_txt.boundingRect()
-                dist_txt.setPos((sx+rx)/2 - dr.width()/2, (sy+ry)/2 - dr.height()/2)
+                mid_x, mid_y = (sx+rx)/2, (sy+ry)/2
+                dist_txt.setPos(mid_x - dr.width()/2, mid_y - dr.height()/2)
+                # White background behind distance label for readability
+                lbl_bg = self.viewer.scene.addRect(
+                    mid_x - dr.width()/2 - 2, mid_y - dr.height()/2 - 1,
+                    dr.width() + 4, dr.height() + 2,
+                    Qt.NoPen, QBrush(Qt.white)
+                )
+                lbl_bg.setOpacity(0.85)
+                lbl_bg.setZValue(14)
                 self.viewer.scene.addItem(dist_txt)
 
-                # Residue Node
-                node = ResidueNodeItem(rx, ry, node_radius, d['name'], d['id'], style['c'])
+                # Residue Node (with category fill color)
+                node = ResidueNodeItem(rx, ry, node_radius, d['name'], d['id'], style['c'], fill_color)
                 node.line_item = line
                 node.label_item = dist_txt
                 node.anchor_pos = QPointF(sx, sy)
@@ -1031,13 +1156,18 @@ class DockingPoseVisualizerWidget(QWidget):
 
             # Stats Update
             total_int = len(interactions)
-            summary = "<br/>".join([f"<b>{k}</b>: {v}" for k, v in counts.items()])
+            int_summary = "<br/>".join([f"<b>{k}</b>: {v}" for k, v in counts.items()])
+            cat_summary = "<br/>".join([
+                f"<span style='color:{RESIDUE_FILL_COLORS.get(k, '#999')};'>■</span> {k}: {v}" 
+                for k, v in sorted(res_cat_counts.items())
+            ])
             self.lbl_stats.setText(f"""
                 <div style='color:{COLORS['text_primary']}; font-family:JetBrains Mono; font-size:11px;'>
                 LIGAND: <b>{best_res_id[:12]}</b><br/>
                 SIZE: {len(ligand_atoms)} atoms<br/>
                 Showing {len(data)} of {total_int}<br/><br/>
-                INTERACTIONS:<br/>{summary}
+                INTERACTIONS:<br/>{int_summary}<br/><br/>
+                RESIDUE TYPES:<br/>{cat_summary}
                 </div>
             """)
             
