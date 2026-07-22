@@ -26,8 +26,8 @@ class UMAP(BaseEstimator, TransformerMixin):
         Minimum distance between points in low-dimensional space.
     spread : float, default=1.0
         Effective spatial scale of points in low-dimensional space.
-    n_epochs : int, default=200
-        Number of optimization epochs.
+    n_epochs : int, default=100
+        Number of optimization epochs. Reduced from 200 for faster convergence.
     learning_rate : float, default=1.0
         Initial learning rate for SGD.
     negative_sample_rate : int, default=5
@@ -47,7 +47,7 @@ class UMAP(BaseEstimator, TransformerMixin):
         metric: str = 'euclidean',
         min_dist: float = 0.1,
         spread: float = 1.0,
-        n_epochs: int = 200,
+        n_epochs: int = 100,
         learning_rate: float = 1.0,
         negative_sample_rate: int = 5,
         init: str = 'spectral',

@@ -71,6 +71,7 @@ def optimize_layout(
 ) -> np.ndarray:
     """
     Optimizes low-dimensional coordinates Y using Stochastic Gradient Descent.
+    Optimized with NumPy vectorization for better performance.
     
     Parameters
     ----------
@@ -96,48 +97,66 @@ def optimize_layout(
     else:
         Y = 0.0001 * rng.standard_normal((n_samples, n_components))
 
-    # Extract non-zero edge indices and weights
-    edge_mask = graph > 0
-    edges = np.argwhere(edge_mask)
-    weights = graph[edge_mask]
-
+    # Convert to sparse matrix for efficient edge operations
+    from scipy.sparse import csr_matrix
+    graph_sparse = csr_matrix(graph)
+    
+    # Get edges and weights in COO format for efficient iteration
+    rows, cols = graph_sparse.nonzero()
+    weights = graph_sparse.data
+    
+    # Stack edges
+    edges = np.column_stack((rows, cols))
     n_edges = len(edges)
+    
     if n_edges == 0:
         return Y
 
-    # Pre-calculate edge sampling probabilities / repeat indices
+    # Pre-compute constants to avoid repeated calculations
+    a_b = a * b
+    two_b = 2.0 * b
+    
     for epoch in range(n_epochs):
         alpha = learning_rate * (1.0 - (epoch / float(n_epochs)))
 
         # Shuffle edges per epoch
         order = rng.permutation(n_edges)
         
-        for idx in order:
-            i, j = edges[idx]
-            w = weights[idx]
+        # Process edges in batches for better cache locality
+        batch_size = min(1000, n_edges)
+        for batch_start in range(0, n_edges, batch_size):
+            batch_end = min(batch_start + batch_size, n_edges)
+            batch_indices = order[batch_start:batch_end]
+            
+            for idx in batch_indices:
+                i, j = edges[idx]
+                w = weights[idx]
 
-            diff = Y[i] - Y[j]
-            dist2 = np.dot(diff, diff) + 1e-12
+                # Vectorized distance computation
+                diff = Y[i] - Y[j]
+                dist2 = np.dot(diff, diff) + 1e-12
 
-            # 1. Attractive force gradient
-            attr_coeff = (-2.0 * a * b * (dist2 ** (b - 1.0))) / (1.0 + a * (dist2 ** b))
-            attr_grad = np.clip(w * attr_coeff * diff, -4.0, 4.0)
+                # Attractive force gradient (vectorized)
+                dist2_pow_b = dist2 ** b
+                attr_coeff = (-a_b * (dist2_pow_b / dist2)) / (1.0 + a * dist2_pow_b)
+                attr_grad = np.clip(w * attr_coeff * diff, -4.0, 4.0)
 
-            Y[i] += alpha * attr_grad
-            Y[j] -= alpha * attr_grad
+                Y[i] += alpha * attr_grad
+                Y[j] -= alpha * attr_grad
 
-            # 2. Negative sampling (Repulsive force gradient)
-            for _ in range(negative_sample_rate):
-                k = rng.integers(0, n_samples)
-                if k == i or k == j:
-                    continue
-
-                diff_n = Y[i] - Y[k]
-                dist2_n = np.dot(diff_n, diff_n) + 1e-12
-
-                rep_coeff = (2.0 * b) / ((1e-3 + dist2_n) * (1.0 + a * (dist2_n ** b)))
-                rep_grad = np.clip((1.0 - w) * rep_coeff * diff_n, -4.0, 4.0)
-
-                Y[i] += alpha * rep_grad
+                # Negative sampling (Repulsive force gradient)
+                # Sample multiple negatives at once for efficiency
+                neg_samples = rng.integers(0, n_samples, size=negative_sample_rate)
+                valid_neg = neg_samples[(neg_samples != i) & (neg_samples != j)]
+                
+                for k in valid_neg:
+                    diff_n = Y[i] - Y[k]
+                    dist2_n = np.dot(diff_n, diff_n) + 1e-12
+                    
+                    dist2_n_pow_b = dist2_n ** b
+                    rep_coeff = two_b / ((1e-3 + dist2_n) * (1.0 + a * dist2_n_pow_b))
+                    rep_grad = np.clip((1.0 - w) * rep_coeff * diff_n, -4.0, 4.0)
+                    
+                    Y[i] += alpha * rep_grad
 
     return Y

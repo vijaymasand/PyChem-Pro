@@ -185,8 +185,8 @@ class ChemicalSpaceWindow(QMainWindow):
         umap_param_layout.setContentsMargins(0, 0, 0, 0)
 
         # Caution Label
-        lbl_umap_caution = QLabel("⚠️ Caution: Pure NumPy UMAP is computationally intensive and may be slow on large datasets.")
-        lbl_umap_caution.setStyleSheet("color: #b7791f; font-size: 11px; font-weight: bold; background-color: #fefcbf; border: 1px solid #f6e05e; border-radius: 4px; padding: 4px;")
+        lbl_umap_caution = QLabel("ℹ️ UMAP optimized with sparse matrices and vectorization. Still slower than PCA/t-SNE on very large datasets.")
+        lbl_umap_caution.setStyleSheet("color: #2b5c8f; font-size: 11px; font-weight: bold; background-color: #e6f0ff; border: 1px solid #4a90e2; border-radius: 4px; padding: 4px;")
         lbl_umap_caution.setWordWrap(True)
         umap_param_layout.addWidget(lbl_umap_caution)
 
