@@ -77,6 +77,8 @@ This makes PyChem-Pro:
 - **QSAR Data Splitting** — 7 partitioning algorithms (Random, Scaffold, CADEX, D-Optimal, Sphere Exclusion, Boruta, Duplex) with PCA visualization and KS-test evaluation.
 - **Chemical Space Visualization** — Featurization, mapping, t-SNE, PCA, and UMAP (very slow) projections for analyzing chemical space coverage of datasets.
 
+  ![Chemical Space Visualization](assets/chemical_space_visualization_PCA.png)
+
 ### Visualization
 - Hardware-aware software 3D rendering (QPainter with gradient sphere shading)
 - Ball-and-stick, space-fill, wireframe, cartoon, ribbon, and backbone modes
@@ -584,6 +586,12 @@ The 3D viewer (`src/features/visualization_3d/ui/mol_viewer_3d.py`) paints direc
 - PyMOL-style cartoon tubes for helices, flat ribbons with arrow heads for sheets, thin coils for loops
 - Color schemes: secondary structure, rainbow, by chain, by B-factor
 
+![Protein Visualization](assets/Protein-Visual.png)
+
+*Ramachandran plot analysis for validation of protein backbones:*
+
+![Ramachandran Plot](assets/ramachandran_plot.png)
+
 ---
 
 ## Multiprocessing
@@ -683,6 +691,18 @@ Drop the file into `plugins/` and restart PyChem, or use **Plugins → Installed
 
 Optional plugins declare their external dependencies in `PluginInfo.dependencies`. If a required package is missing, the plugin is skipped with a warning at startup.
 
+#### Docking & Interaction Visualization Showcase
+
+PyChem-Pro offers robust visual tools for mapping molecular interactions in both 2D and 3D space:
+
+- **2D Docking Pose Visualizer**: Highlights hydrogen bonds, hydrophobic interactions, salt bridges, and contacts with distance-aware spacing and colored residue categories.
+  
+  ![2D Docking Pose Interaction Diagram](assets/2D-Docking_Pose.png)
+  
+- **3D Docking Pose Viewer**: Displays spatial binding modes directly in the 3D molecular viewer.
+  
+  ![3D Docking Pose Viewer](assets/3D-docking%20pose.png)
+
 ---
 
 ## Development Workflow
@@ -773,6 +793,9 @@ The architecture spec at `docs/superpowers/specs/2026-04-11-architecture-redesig
 - Ring template library for faster and more accurate cyclic structure generation
 - Conformer ensemble analysis (RMSD clustering, Boltzmann-weighted properties)
 - In-app 2D chemical structure editor / sketcher
+  
+  ![2D Structure Sketcher](assets/2D-sketcher.png)
+  
 - Extended MMFF94 parameter tables (halogens, phosphorus, metals)
 - Docking interface (scoring function only, no compiled dependencies)
 
