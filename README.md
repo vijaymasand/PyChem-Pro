@@ -15,7 +15,7 @@
 
 **Financial support/Sponsorship**
 🎉 Another PyChem-Pro Milestone Update!
-I am incredibly proud to share that PyChem-Pro has received another official financial support from Dr. N.Murali, MD, AcuroRx, USA. 
+I am incredibly proud to share that PyChem-Pro has received another official financial support from Dr. Pawan Kumar Gupta, Associate Professor, Pharmaceutical Chemistry, School of Pharmacy & Technology Management, SVKM-NMIMS Global University, Dhule, Maharashtra.
 
 ---
 
@@ -23,7 +23,6 @@ I am incredibly proud to share that PyChem-Pro has received another official fin
 
 - [About PyChem-Pro](#about-pychem-pro)
 - [Key Features](#key-features)
-- [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
