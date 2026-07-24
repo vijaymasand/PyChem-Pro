@@ -15,7 +15,7 @@
 
 **Financial support/Sponsorship**
 🎉 Another PyChem-Pro Milestone Update!
-I am incredibly proud to share that PyChem-Pro has received another official financial support from Dr. Meghshyam K. patil, Dr. Babasaheb Ambedkar Marathwada Universiy Sub-campus Dharashiv, Dharashiv, Maharashtra.
+I am incredibly proud to share that PyChem-Pro has received another official financial support from Dr. Meghshyam K. Patil, Dr. Babasaheb Ambedkar Marathwada Universiy Sub-campus Dharashiv, Dharashiv, Maharashtra.
 
 ---
 
