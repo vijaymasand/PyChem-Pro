@@ -79,11 +79,13 @@ def calculate_constitutional(molecule) -> Dict[str, Any]:
     results["nTripleBonds"] = triple
     results["nAromaticBonds"] = aromatic
     
-    if num_bonds > 0:
-        results["Prop_SingleBonds"] = single / num_bonds
-        results["Prop_DoubleBonds"] = double / num_bonds
-        results["Prop_TripleBonds"] = triple / num_bonds
-        results["Prop_AromaticBonds"] = aromatic / num_bonds
+    # always emit the proportions, a molecule without bonds simply has zeros;
+    # skipping the keys would punch NaN holes into a batch CSV
+    denominator = num_bonds if num_bonds > 0 else 1
+    results["Prop_SingleBonds"] = single / denominator
+    results["Prop_DoubleBonds"] = double / denominator
+    results["Prop_TripleBonds"] = triple / denominator
+    results["Prop_AromaticBonds"] = aromatic / denominator
     
     # Ring counts (simple)
     if hasattr(molecule, 'find_rings'):

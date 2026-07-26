@@ -11,8 +11,12 @@ class HybridCalculator(BaseCalculator):
     def calc_lipophilicity(self, molecule, selection) -> float:
         """Calculate molecular lipophilicity (logP) using MLP method."""
         from ...cheminformatics.services.lipophilicity_service import calculate_logp
-        
-        # If selection is not the whole molecule, we could subset, 
+
+        # The MLP method integrates over the solvent accessible surface, so the
+        # molecule needs a geometry; one is generated when it has none.
+        if not self.ensure_coordinates(molecule):
+            return 0.0
+        # If selection is not the whole molecule, we could subset,
         # but logP is generally a molecular property.
         # For consistency with other calculators, we'll calculate it for the full molecule
         # unless it's a very specific fragment selection.
