@@ -63,3 +63,12 @@ def atomic_num_to_symbol(atomic_num):
     raise ValueError("Invalid atomic number %s" % str(atomic_num))
 
 auto_hydrogen_elements = {"B", "C", "Si", "N", "P", "As", "O", "S", "F", "Cl", "Br", "I"}
+
+# elements that carry lone pairs when neutral -> a positive charge opens one more
+# bonding site (NH4+), a negative one closes it (OH-)
+lone_pair_elements = {"N", "P", "As", "Sb", "O", "S", "Se", "Te", "F", "Cl", "Br", "I"}
+# electron deficient elements behave the other way round (BH4-)
+electron_deficient_elements = {"B", "Al", "Ga", "In"}
+
+# elements offered by the sketcher element palette
+common_elements = ["C", "N", "O", "S", "P", "F", "Cl", "Br", "I", "H", "B", "Si", "Se"]

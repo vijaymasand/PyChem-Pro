@@ -10,16 +10,25 @@ class ConstitutionalCalculator(BaseCalculator):
     """Calculator for constitutional (1D) molecular descriptors."""
 
     def calc_molecular_weight(self, molecule, selection) -> float:
-        """Calculate molecular weight."""
-        atomic_weights = {'H': 1.008, 'C': 12.011, 'N': 14.007, 'O': 15.999,
-                        'F': 18.998, 'Cl': 35.453, 'Br': 79.904, 'I': 126.904,
-                        'S': 32.066, 'P': 30.974, 'Si': 28.086}
+        """Calculate molecular weight.
 
+        Uses the element masses from the periodic table (so every element
+        contributes, not just a hard coded handful) and adds the hydrogens that
+        a structure from SMILES only carries implicitly. """
         total_weight = 0.0
         for idx in self.get_selected_atoms(molecule, selection):
             atom = molecule.atoms[idx]
-            total_weight += atomic_weights.get(atom.symbol, 0.0)
+            total_weight += getattr(atom, 'mass', 0.0)
+            if atom.symbol != 'H':
+                total_weight += self.count_hydrogens(molecule, idx) * 1.008
         return total_weight
+
+    def count_hydrogens(self, molecule, idx) -> int:
+        """Hydrogens on an atom, implicit and explicit alike."""
+        atom = molecule.atoms[idx]
+        explicit = sum(1 for n in molecule.get_neighbors(idx)
+                       if n < len(molecule.atoms) and molecule.atoms[n].symbol == 'H')
+        return int(getattr(atom, 'total_h', 0) or 0) + explicit
 
     def calc_atom_count(self, molecule, selection) -> int:
         """Calculate total atom count."""
@@ -286,32 +295,38 @@ class ConstitutionalCalculator(BaseCalculator):
         return count
 
     def calc_hydroxyl_group_count(self, molecule, selection) -> int:
-        """Calculate hydroxyl group (-OH) count."""
+        """Calculate hydroxyl group (-OH) count.
+
+        Counts implicit hydrogens as well, otherwise every structure coming
+        from SMILES would report zero hydroxyls. """
         count = 0
         for idx in self.get_selected_atoms(molecule, selection):
-            if molecule.atoms[idx].symbol == 'O':
-                neighbors = molecule.get_neighbors(idx)
-                if any(n < len(molecule.atoms) and molecule.atoms[n].symbol == 'H' for n in neighbors):
-                    count += 1
+            if molecule.atoms[idx].symbol == 'O' and self.count_hydrogens(molecule, idx) > 0:
+                count += 1
         return count
 
     def calc_carboxyl_group_count(self, molecule, selection) -> int:
-        """Calculate carboxyl group (-COOH) count."""
-        selected_set = self.get_selected_set(selection)
+        """Calculate carboxyl group (-COOH) count.
+
+        A carboxyl needs a carbonyl oxygen *and* a hydroxyl oxygen on the same
+        carbon; without the double bond check a sugar's anomeric centre
+        (ring O plus OH) would be counted as an acid. """
         count = 0
         for idx in self.get_selected_atoms(molecule, selection):
-            if molecule.atoms[idx].symbol == 'C':
-                neighbors = molecule.get_neighbors(idx)
-                o_count = 0
-                oh_count = 0
-                for n in neighbors:
-                    if n < len(molecule.atoms) and molecule.atoms[n].symbol == 'O':
-                        o_count += 1
-                        o_neighbors = molecule.get_neighbors(n)
-                        if any(nn < len(molecule.atoms) and molecule.atoms[nn].symbol == 'H' for nn in o_neighbors):
-                            oh_count += 1
-                if o_count == 2 and oh_count >= 1:
-                    count += 1
+            if molecule.atoms[idx].symbol != 'C':
+                continue
+            carbonyl = False
+            hydroxyl = False
+            for n in molecule.get_neighbors(idx):
+                if n >= len(molecule.atoms) or molecule.atoms[n].symbol != 'O':
+                    continue
+                bond = molecule.get_bond_between(idx, n)
+                if bond is not None and bond.is_double:
+                    carbonyl = True
+                elif self.count_hydrogens(molecule, n) > 0:
+                    hydroxyl = True
+            if carbonyl and hydroxyl:
+                count += 1
         return count
 
     def calc_amine_group_count(self, molecule, selection) -> int:
@@ -334,14 +349,11 @@ class ConstitutionalCalculator(BaseCalculator):
         return count
 
     def calc_methyl_group_count(self, molecule, selection) -> int:
-        """Calculate methyl group (-CH3) count."""
+        """Calculate methyl group (-CH3) count, implicit hydrogens included."""
         count = 0
         for idx in self.get_selected_atoms(molecule, selection):
-            if molecule.atoms[idx].symbol == 'C':
-                neighbors = molecule.get_neighbors(idx)
-                h_count = sum(1 for n in neighbors if n < len(molecule.atoms) and molecule.atoms[n].symbol == 'H')
-                if h_count == 3:
-                    count += 1
+            if molecule.atoms[idx].symbol == 'C' and self.count_hydrogens(molecule, idx) == 3:
+                count += 1
         return count
 
     # Chain and branch descriptors

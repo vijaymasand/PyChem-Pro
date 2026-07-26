@@ -43,7 +43,9 @@ class PyDesEngine:
                     results[f"{k}_norm"] = val / (const_res.get('nHeavyAtoms', 1) or 1)
                     results[f"{k}_sq"] = val ** 2
                     
-            # Also calculate and append the original 126 descriptors from PyChem-Pro
+            # Append the full PyChem-Pro descriptor set (constitutional,
+            # topological, geometric, electronic, quantum, fingerprints,
+            # hybrid/drug-likeness) on top of the PyDes vectors above
             try:
                 from ..descriptor_engine import DescriptorEngine
                 engine = DescriptorEngine(enable_cache=False)
@@ -51,7 +53,7 @@ class PyDesEngine:
                 for k, v in original_results.items():
                     results[k] = v.value
             except Exception as inner_e:
-                print(f"[PyDes] Warning: Could not calculate original 126 descriptors: {inner_e}")
+                print(f"[PyDes] Warning: Could not calculate the descriptor engine set: {inner_e}")
 
                     
         except Exception as e:

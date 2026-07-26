@@ -12,6 +12,8 @@ from src.shared.qt_compat import (QGraphicsScene, QGraphicsItem, QGraphicsTextIt
 
 class Paper(QGraphicsScene):
     text_editing_finished = Signal()
+    # object under the cursor, scene x, scene y
+    context_menu_requested = Signal(object, float, float)
 
     def __init__(self, view=None):
         QGraphicsScene.__init__(self, view)
@@ -29,10 +31,32 @@ class Paper(QGraphicsScene):
         self.focused_obj = None
         self.locked_focus_obj = None
         self.selected_objs = []
+        self.show_carbon = "Never"  # Never | Terminal | All
         item = self.addText("")
         self.textitem_margin = item.boundingRect().width() / 2
         self.removeItem(item)
         self.undo_manager = UndoManager(self)
+
+    def clear_all(self):
+        """ removes everything from the paper and resets all references to it.
+
+        QGraphicsScene.clear() destroys the underlying C++ items, so every python
+        side reference (objects, focusables, the page rectangle) has to go too,
+        otherwise the next redraw touches deleted items. The objects themselves
+        stay alive in the undo stack, so clearing can be undone. """
+        self.focused_obj = None
+        self.locked_focus_obj = None
+        self.selected_objs = []
+        self.dirty_objects.clear()
+        self.focusable_items.clear()
+        for obj in list(self.objects):
+            obj.paper = None
+        self.objects = []
+        w, h = self.width(), self.height()
+        self.paper_item = None
+        self.clear()
+        self.setSize(w, h)
+        self.save_state_to_undo_stack("Clear")
 
     def setSize(self, w, h):
         self.setSceneRect(0, 0, w, h)
@@ -219,15 +243,18 @@ class Paper(QGraphicsScene):
         self._mouse_press_pos = (ev.scenePos().x(), ev.scenePos().y())
         x, y = self._mouse_press_pos
         
+        zoom = self.view.transform().m11() if self.view else 1.0
+        d = max(2, 8 / zoom)
+
         if ev.button() == Qt.MouseButton.RightButton:
+            # the right button acts on what is under the cursor as well
+            self.changeFocusTo(self.find_closest_object(x, y, d))
             if App.tool and hasattr(App.tool, 'on_right_click'):
                 App.tool.on_right_click(x, y)
             return
 
-        zoom = self.view.transform().m11()
-        d = max(2, 8 / zoom)
         focused = self.find_closest_object(x, y, d)
-        
+
         if focused:
             self.locked_focus_obj = focused
             self.changeFocusTo(focused)
@@ -255,7 +282,11 @@ class Paper(QGraphicsScene):
             if isinstance(obj, Atom):
                 dist = geo.point_distance(p, (obj.x, obj.y))
             elif isinstance(obj, Bond):
+                if len(obj.atoms) != 2: continue
                 dist = geo.dist_to_segment(p, (obj.atoms[0].x, obj.atoms[0].y), (obj.atoms[1].x, obj.atoms[1].y))
+            elif hasattr(obj, 'p1') and hasattr(obj, 'p2'):
+                # arrows are long, the distance to the line is what counts
+                dist = geo.dist_to_segment(p, obj.p1, obj.p2)
             else:
                 center = obj.get_center() if hasattr(obj, 'get_center') else None
                 if center:
@@ -264,11 +295,27 @@ class Paper(QGraphicsScene):
             # Tie-breaker: prioritize Atoms over Bonds if distances are nearly equal
             # Atoms are at the joints, so clicking a joint should select the atom.
             if isinstance(obj, Atom): dist -= 0.5
-            
+
             if dist < min_dist:
                 min_dist = dist
                 best_obj = obj
         return best_obj
+
+    def find_closest_atom(self, x, y, radius, exclude=()):
+        """ nearest atom of any molecule within radius, None if there is none.
+
+        Works on the object model instead of the graphics items, so it also finds
+        atoms that have not been (re)drawn yet - which is what bond drawing needs. """
+        from . import geometry as geo
+        best, best_dist = None, radius
+        for obj in self.objects:
+            if not hasattr(obj, 'atoms'): continue
+            for atom in obj.atoms:
+                if atom in exclude or atom.x is None: continue
+                dist = geo.point_distance((x, y), (atom.x, atom.y))
+                if dist <= best_dist:
+                    best, best_dist = atom, dist
+        return best
 
     def mouseMoveEvent(self, ev):
         x, y = ev.scenePos().x(), ev.scenePos().y()
@@ -308,11 +355,15 @@ class Paper(QGraphicsScene):
         self.undo_manager.save_current_state(name)
 
     def undo(self):
-        self.changeFocusTo(None)
-        self.focusable_items.clear()
+        self._reset_focus_state()
         self.undo_manager.undo()
 
     def redo(self):
-        self.changeFocusTo(None)
-        self.focusable_items.clear()
+        self._reset_focus_state()
         self.undo_manager.redo()
+
+    def _reset_focus_state(self):
+        self.changeFocusTo(None)
+        self.locked_focus_obj = None
+        self.selected_objs = []
+        self.focusable_items.clear()
