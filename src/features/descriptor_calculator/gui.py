@@ -727,8 +727,9 @@ if QT_FRAMEWORK is not None:
                 writer = csv.writer(csvfile)
                 
                 # Write header
-                writer.writerow(['Category', 'Descriptor', 'Description', 'Unit', 'Typical Range'])
-                
+                writer.writerow(['Category', 'Descriptor', 'Description', 'Formula',
+                                 'Unit', 'Typical Range'])
+
                 # Write documentation for all available descriptors
                 for category, descriptors in engine.descriptors.items():
                     for desc in descriptors:
@@ -736,6 +737,7 @@ if QT_FRAMEWORK is not None:
                             category.value,
                             desc.name,
                             desc.description or '',
+                            desc.formula or '',
                             desc.unit or '',
                             getattr(desc, 'range', '') or ''
                         ])

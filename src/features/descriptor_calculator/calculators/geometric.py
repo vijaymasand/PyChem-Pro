@@ -12,7 +12,8 @@ class GeometricCalculator(BaseCalculator):
     def calc_sasa(self, molecule, selection) -> float:
         """Calculate solvent accessible surface area (SASA) using Shrake-Rupley algorithm."""
         from src.features.cheminformatics.services.geometry_utils import calculate_sasa
-        
+
+        self.ensure_coordinates(molecule)
         atoms = [molecule.atoms[idx] for idx in selection.atom_indices if idx < len(molecule.atoms)]
         if not atoms or not all(a.has_coords for a in atoms):
             return 0.0
@@ -25,7 +26,8 @@ class GeometricCalculator(BaseCalculator):
     def calc_molecular_volume(self, molecule, selection) -> float:
         """Calculate molecular volume using numerical integration."""
         from src.features.cheminformatics.services.geometry_utils import calculate_volume
-        
+
+        self.ensure_coordinates(molecule)
         atoms = [molecule.atoms[idx] for idx in selection.atom_indices if idx < len(molecule.atoms)]
         if not atoms or not all(a.has_coords for a in atoms):
             return 0.0
@@ -37,10 +39,13 @@ class GeometricCalculator(BaseCalculator):
 
     def calc_radius_of_gyration(self, molecule, selection) -> float:
         """Calculate radius of gyration."""
+        self.ensure_coordinates(molecule)
         coords = []
         for idx in selection.atom_indices:
             if idx < len(molecule.atoms):
                 atom = molecule.atoms[idx]
+                if atom.x is None or atom.y is None or atom.z is None:
+                    continue
                 coords.append([atom.x, atom.y, atom.z])
 
         if not coords:

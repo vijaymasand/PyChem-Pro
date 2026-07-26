@@ -7,7 +7,6 @@ from .drawing_parents import DrawableObject
 from .atom import Atom
 from .bond import Bond
 from src.vendors.oasa.molecule import molecule as OasaMolecule
-from . import common
 from . import geometry as geo
 
 global molecule_id_no
@@ -116,8 +115,20 @@ class Molecule(OasaMolecule, DrawableObject):
         elif len(neighbors) == 1:
             neigh = neighbors[0]
             angle = atan2(neigh.y - a.y, neigh.x - a.x)
-            x = a.x + cos(angle + PI) * distance
-            y = a.y + sin(angle + PI) * distance
+            linear = added_order >= 3 or any(b.order >= 3 for b in a.neighbor_edges)
+            if linear:
+                # sp carbon : the new bond continues in a straight line
+                x = a.x + cos(angle + PI) * distance
+                y = a.y + sin(angle + PI) * distance
+            else:
+                # sp2/sp3 : 120 degrees, on the roomier side, which makes
+                # chains zig-zag the way they do in every drawing program
+                candidates = [(a.x + cos(angle + 2 * PI / 3) * distance,
+                               a.y + sin(angle + 2 * PI / 3) * distance),
+                              (a.x + cos(angle - 2 * PI / 3) * distance,
+                               a.y + sin(angle - 2 * PI / 3) * distance)]
+                others = [o for o in self.atoms if o is not a and o is not neigh]
+                x, y = max(candidates, key=lambda p: self._clearance(p, others))
         else:
             angles = [atan2(n.y - a.y, n.x - a.x) for n in neighbors]
             angles.sort()
@@ -133,10 +144,21 @@ class Molecule(OasaMolecule, DrawableObject):
             y = a.y + sin(best_angle) * distance
         return x, y
 
-    def bounding_box(self):
-        if not self.atoms: return [0, 0, 0, 0]
-        bboxes = [atom.bounding_box() for atom in self.atoms]
-        return common.bbox_of_bboxes(bboxes)
+    @staticmethod
+    def _clearance(point, atoms):
+        """ distance from point to the closest of atoms (inf when there is none) """
+        if not atoms:
+            return float('inf')
+        return min((o.x - point[0])**2 + (o.y - point[1])**2 for o in atoms)
+
+    def preferred_bond_length(self):
+        """ length new bonds/rings should use so that they match what is drawn """
+        from .app_data import Settings
+        lengths = sorted(geo.point_distance(b.atoms[0].pos, b.atoms[1].pos)
+                         for b in self.bonds if len(b.atoms) == 2)
+        if lengths:
+            return lengths[len(lengths) // 2]  # median, robust against odd bonds
+        return Settings.bond_length * self.scale_val
 
     def handle_overlap(self):
         to_process = self.atoms[:]
@@ -211,8 +233,10 @@ class Molecule(OasaMolecule, DrawableObject):
         self.draw()
 
     def get_bond_between_atoms(self, a1, a2):
+        # atom_connected_to() answers for any bond, even one that does not contain
+        # a1 at all, so both atoms have to be checked explicitly
         for bond in self.bonds:
-            if bond.atom_connected_to(a1) == a2:
+            if len(bond.atoms) == 2 and a1 in bond.atoms and a2 in bond.atoms:
                 return bond
         return None
 
@@ -236,10 +260,14 @@ class Molecule(OasaMolecule, DrawableObject):
             new_mol.add_atom(new_atom)
             atom_map[atom] = new_atom
         for bond in self.bonds:
+            if len(bond.atoms) != 2: continue
             new_bond = Bond()
             new_bond.set_type(bond.type)
             new_bond.color = bond.color
             new_bond.connect_atoms(atom_map[bond.atoms[0]], atom_map[bond.atoms[1]])
+            # keep the inner line of double bonds on the side it was drawn on
+            new_bond.auto_second_line_side = bond.auto_second_line_side
+            new_bond.second_line_side = bond.second_line_side
             new_mol.add_bond(new_bond)
         return new_mol
 

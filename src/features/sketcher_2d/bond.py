@@ -138,8 +138,18 @@ class Bond(OasaBond, DrawableObject):
         if self._focus_item: self.set_focus(False)
         if self._selection_item: self.set_selected(False)
 
+    def reverse(self):
+        """ swaps the two atoms, this flips the direction of wedge bonds """
+        if len(self.atoms) == 2:
+            self.atoms.reverse()
+
     def draw(self):
         self.clear_drawings()
+        # a bond that got disconnected (or is not on a paper yet) has nothing to draw
+        if len(self.atoms) != 2 or not self.molecule or not self.molecule.paper:
+            return
+        if self.atoms[0].x is None or self.atoms[1].x is None:
+            return
         self._midline = self._where_to_draw_from_and_to()
         if not self._midline: return
         self.paper = self.molecule.paper

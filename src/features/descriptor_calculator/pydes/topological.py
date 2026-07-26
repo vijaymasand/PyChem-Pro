@@ -82,8 +82,11 @@ def calculate_topological(molecule) -> Dict[str, Any]:
         nums = {'H':1, 'C':6, 'N':7, 'O':8, 'F':9, 'P':15, 'S':16, 'Cl':17, 'Br':35, 'I':53}
         atomic_nums.append(nums.get(sym, 6))
         
-    # Moreau-Broto Autocorrelation
-    max_lag = min(15, n)
+    # Moreau-Broto Autocorrelation.
+    # The lag range is fixed rather than tied to the molecule size, otherwise a
+    # batch of molecules produces ragged columns and the CSV ends up with NaN
+    # holes wherever the smaller molecules stopped early.
+    max_lag = 15
     for lag in range(1, max_lag + 1):
         mb_mass = 0.0
         mb_num = 0.0

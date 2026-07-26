@@ -3,9 +3,18 @@ from src.shared.qt_compat import *
 from src.shared.qt_compat import QImage, QPainter, QFileDialog, QRectF
 
 from ..paper import Paper
-from ..tools import StructureTool, EraserTool, ShapeTool, toolsettings
+from ..tools import (StructureTool, EraserTool, ShapeTool, toolsettings,
+                     ring_templates)
+from ..fragments import known_labels
 from ..shapes import Rectangle, Ellipse
-from ..app_data import App, Settings
+from ..app_data import App, Settings, common_elements, periodic_table
+
+# order the templates the way a chemist looks for them
+ring_names = ["benzene", "cyclohexane", "cyclopentane", "cyclopropane",
+              "cyclobutane", "cycloheptane", "cyclooctane", "naphthalene",
+              "pyridine", "pyrrole", "furan", "thiophene", "cyclopentadiene"]
+ring_names += [n for n in ring_templates if n not in ring_names]
+
 
 class SketcherWidget(QWidget):
     molecule_imported = Signal(str) # SMILES string
@@ -14,6 +23,17 @@ class SketcherWidget(QWidget):
         super().__init__(parent)
         self._init_ui()
         App.paper = self.paper # Shared App object
+
+    def _add_tool_action(self, action, shortcut=None):
+        """ registers a checkable tool action on the toolbar and its shortcut """
+        if shortcut:
+            action.setShortcut(QKeySequence(shortcut))
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            self.addAction(action)
+        self.tool_group.addAction(action)
+        self.toolbar.addAction(action)
+        return action
+
     def _init_ui(self):
         # Main layout: Horizontal (Toolbar on left, Canvas on right)
         main_layout = QHBoxLayout(self)
@@ -46,65 +66,92 @@ class SketcherWidget(QWidget):
         # Tool group for exclusive selection
         self.tool_group = QActionGroup(self)
 
-        # Basic Tools
-        self.action_bond = QAction("Bond", self)
-        self.action_bond.setToolTip("Draw Bonds")
-        self.action_bond.setCheckable(True)
-        self.tool_group.addAction(self.action_bond)
-        self.toolbar.addAction(self.action_bond)
-
-        self.action_eraser = QAction("Eraser", self)
-        self.action_eraser.setToolTip("Remove Atoms or Bonds")
-        self.action_eraser.setCheckable(True)
-        self.tool_group.addAction(self.action_eraser)
-        self.toolbar.addAction(self.action_eraser)
-
-        self.action_text = QAction("Text", self)
-        self.action_text.setToolTip("Add Text")
-        self.action_text.setCheckable(True)
-        self.tool_group.addAction(self.action_text)
-        self.toolbar.addAction(self.action_text)
-
+        # Basic Tools. The single key shortcuts avoid c/n/o/s/p/f/l/b/i/h,
+        # those retype the atom under the cursor.
         self.action_select = QAction("Select", self)
-        self.action_select.setToolTip("Select & Move")
+        self.action_select.setToolTip("Select & Move (V)")
         self.action_select.setCheckable(True)
         self.action_select.setChecked(True)
-        self.tool_group.addAction(self.action_select)
-        self.toolbar.addAction(self.action_select)
+        self._add_tool_action(self.action_select, "V")
+
+        self.action_bond = QAction("Bond", self)
+        self.action_bond.setToolTip("Draw bonds (D)\n"
+                                    "Drag from an atom, bonds snap to 15° steps\n"
+                                    "Hold Shift while dragging for a free bond")
+        self.action_bond.setCheckable(True)
+        self._add_tool_action(self.action_bond, "D")
+
+        self.action_eraser = QAction("Eraser", self)
+        self.action_eraser.setToolTip("Remove atoms or bonds, drag to keep erasing (E)")
+        self.action_eraser.setCheckable(True)
+        self._add_tool_action(self.action_eraser, "E")
+
+        self.action_text = QAction("Text", self)
+        self.action_text.setToolTip("Add text (T)")
+        self.action_text.setCheckable(True)
+        self._add_tool_action(self.action_text, "T")
 
         self.action_rotate = QAction("Rotate", self)
-        self.action_rotate.setToolTip("Rotate Molecule")
+        self.action_rotate.setToolTip("Rotate molecule (R)")
         self.action_rotate.setCheckable(True)
-        self.tool_group.addAction(self.action_rotate)
-        self.toolbar.addAction(self.action_rotate)
+        self._add_tool_action(self.action_rotate, "R")
 
         self.toolbar.addSeparator()
 
         # Bond Types
+        self.toolbar.addWidget(QLabel("Bond"))
         self.bond_combo = QComboBox()
         self.bond_combo.addItems(["single", "double", "triple", "wedge", "hashed_wedge"])
+        self.bond_combo.setToolTip("Type used for new bonds.\n"
+                                   "Clicking an existing bond applies it, "
+                                   "clicking again cycles the order / flips the wedge.")
         self.bond_combo.currentTextChanged.connect(self._on_bond_type_changed)
         self.toolbar.addWidget(self.bond_combo)
 
         self.toolbar.addSeparator()
 
+        # Atom / group label
+        self.toolbar.addWidget(QLabel("Atom"))
+        self.element_combo = QComboBox()
+        self.element_combo.setEditable(True)
+        self.element_combo.addItems(common_elements)
+        self.element_combo.addItems([g for g in known_labels() if g not in common_elements])
+        self.element_combo.setCurrentText("C")
+        self.element_combo.setToolTip(
+            "Element or group used when drawing.\n"
+            "Group labels (OH, Ph, COOH, NO2, Boc ...) are expanded into atoms.\n"
+            "You can also hover an atom and press c/n/o/s/p/f/l/b/i/h.")
+        self.element_combo.currentTextChanged.connect(self._on_element_changed)
+        self.toolbar.addWidget(self.element_combo)
+
+        self.action_charge_plus = QAction("Charge +", self)
+        self.action_charge_plus.setToolTip("Click an atom to raise its charge")
+        self.action_charge_plus.setCheckable(True)
+        self._add_tool_action(self.action_charge_plus)
+
+        self.action_charge_minus = QAction("Charge −", self)
+        self.action_charge_minus.setToolTip("Click an atom to lower its charge")
+        self.action_charge_minus.setCheckable(True)
+        self._add_tool_action(self.action_charge_minus)
+
+        self.toolbar.addSeparator()
+
         # Rings
         self.toolbar.addWidget(QLabel("Rings"))
-        self.action_benzene = QAction("Benzene", self)
-        self.action_benzene.setCheckable(True)
-        self.tool_group.addAction(self.action_benzene)
-        self.toolbar.addAction(self.action_benzene)
+        self.ring_combo = QComboBox()
+        self.ring_combo.addItems(ring_names)
+        self.ring_combo.setCurrentText("benzene")
+        self.ring_combo.setToolTip("Ring template.\n"
+                                   "Click empty paper for a free ring (drag to spin it),\n"
+                                   "an atom to hang the ring on it, "
+                                   "or a bond to fuse the ring onto it.")
+        self.ring_combo.currentTextChanged.connect(self._on_ring_changed)
+        self.toolbar.addWidget(self.ring_combo)
 
-        self.action_cyclohexane = QAction("Hexane", self)
-        self.action_cyclohexane.setCheckable(True)
-        self.tool_group.addAction(self.action_cyclohexane)
-        self.toolbar.addAction(self.action_cyclohexane)
-
-        self.action_cyclopentane = QAction("Pentane", self)
-        self.action_cyclopentane.setCheckable(True)
-        self.tool_group.addAction(self.action_cyclopentane)
-        self.toolbar.addAction(self.action_cyclopentane)
-
+        self.action_ring = QAction("Ring", self)
+        self.action_ring.setToolTip("Place the selected ring (G)")
+        self.action_ring.setCheckable(True)
+        self._add_tool_action(self.action_ring, "G")
 
         self.toolbar.addSeparator()
         self.toolbar.addWidget(QLabel("Arrows"))
@@ -148,19 +195,23 @@ class SketcherWidget(QWidget):
         self.action_rectangle = QAction("Rect", self)
         self.action_rectangle.setCheckable(True)
         self.action_rectangle.setToolTip("Rectangle (Shift for Square)")
-        self.action_rectangle.triggered.connect(lambda: self._on_tool_changed(self.action_rectangle))
         self.toolbar.addAction(self.action_rectangle)
         self.tool_group.addAction(self.action_rectangle)
 
         self.action_ellipse = QAction("Ellipse", self)
         self.action_ellipse.setCheckable(True)
         self.action_ellipse.setToolTip("Ellipse (Shift for Circle)")
-        self.action_ellipse.triggered.connect(lambda: self._on_tool_changed(self.action_ellipse))
         self.toolbar.addAction(self.action_ellipse)
         self.tool_group.addAction(self.action_ellipse)
 
         self.toolbar.addSeparator()
 
+        # back to the select tool, the way Esc works in every drawing program
+        self.action_escape = QAction("Esc", self)
+        self.action_escape.setShortcut(QKeySequence(Qt.Key.Key_Escape))
+        self.action_escape.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.action_escape.triggered.connect(self._activate_select_tool)
+        self.addAction(self.action_escape)
 
         # Right side: Canvas and Right Toolbar
         self.view = QGraphicsView()
@@ -216,6 +267,12 @@ class SketcherWidget(QWidget):
         self.action_flip_v.triggered.connect(self._on_flip_v)
         self.right_toolbar.addAction(self.action_flip_v)
 
+        self.action_cleanup = QAction("Clean Up", self)
+        self.action_cleanup.setToolTip("Lay the structure out again with even "
+                                       "bond lengths and angles")
+        self.action_cleanup.triggered.connect(self._on_cleanup)
+        self.right_toolbar.addAction(self.action_cleanup)
+
         self.right_toolbar.addSeparator()
 
         # Copy/Paste (Right Toolbar)
@@ -240,16 +297,38 @@ class SketcherWidget(QWidget):
         self.action_export.triggered.connect(self._on_export)
         self.right_toolbar.addAction(self.action_export)
 
+        self.action_save_mol = QAction("Save", self)
+        self.action_save_mol.setToolTip("Save the structure as MOL / SDF (Ctrl+S)")
+        self.action_save_mol.setShortcut(QKeySequence.Save)
+        self.action_save_mol.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.action_save_mol.triggered.connect(self._on_save_mol)
+        self.right_toolbar.addAction(self.action_save_mol)
+        self.addAction(self.action_save_mol)
+
+        self.action_open_mol = QAction("Open", self)
+        self.action_open_mol.setToolTip("Open a MOL / SDF file (Ctrl+O)")
+        self.action_open_mol.setShortcut(QKeySequence.Open)
+        self.action_open_mol.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.action_open_mol.triggered.connect(self._on_open_mol)
+        self.right_toolbar.addAction(self.action_open_mol)
+        self.addAction(self.action_open_mol)
+
         self.right_toolbar.addSeparator()
-        
+
         self.action_smiles = QAction("SMILES", self)
         self.action_smiles.setToolTip("SMILES to 2D")
         self.action_smiles.triggered.connect(self._on_smiles_to_2d)
         self.right_toolbar.addAction(self.action_smiles)
 
+        self.action_copy_smiles = QAction("Get SMILES", self)
+        self.action_copy_smiles.setToolTip("Copy the SMILES of the structure to the clipboard")
+        self.action_copy_smiles.triggered.connect(self._on_copy_smiles)
+        self.right_toolbar.addAction(self.action_copy_smiles)
+
         self.right_toolbar.addSeparator()
 
         self.action_clear = QAction("Clear", self)
+        self.action_clear.setToolTip("Remove everything from the page")
         self.action_clear.triggered.connect(self._on_clear)
         self.right_toolbar.addAction(self.action_clear)
 
@@ -272,6 +351,14 @@ class SketcherWidget(QWidget):
         self.action_color.triggered.connect(self._on_color)
         self.right_toolbar.addAction(self.action_color)
 
+        self.right_toolbar.addSeparator()
+        self.right_toolbar.addWidget(QLabel("Carbons"))
+        self.carbon_combo = QComboBox()
+        self.carbon_combo.addItems(["Never", "Terminal", "All"])
+        self.carbon_combo.setToolTip("Show the C label on carbon atoms")
+        self.carbon_combo.currentTextChanged.connect(self._on_show_carbon_changed)
+        self.right_toolbar.addWidget(self.carbon_combo)
+
         # Spacer for Right Toolbar
         right_spacer = QWidget()
         right_spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -293,19 +380,16 @@ class SketcherWidget(QWidget):
         self.paper.setSize(2000, 2000)
         self.view.centerOn(0, 0)
         
-        from ..tools import TemplateTool, ArrowTool, SelectTool, TextTool, RotateTool
+        from ..tools import (TemplateTool, ArrowTool, SelectTool, TextTool,
+                             RotateTool, ChargeTool)
         self.tools = {
             "bond": StructureTool(),
             "eraser": EraserTool(),
             "text": TextTool(),
             "select": SelectTool(),
             "rotate": RotateTool(),
-            "benzene": TemplateTool("benzene"),
-            "cyclohexane": TemplateTool("cyclohexane"),
-            "cyclopentane": TemplateTool("cyclopentane"),
-            "pyridine": TemplateTool("pyridine"),
-            "furan": TemplateTool("furan"),
-            "pyrrole": TemplateTool("pyrrole"),
+            "charge_plus": ChargeTool(1),
+            "charge_minus": ChargeTool(-1),
             "arrow": ArrowTool("reaction", curvature=0.0),
             "equilibrium": ArrowTool("equilibrium", curvature=0.0),
             "reversible": ArrowTool("reversible", curvature=0.0),
@@ -314,23 +398,163 @@ class SketcherWidget(QWidget):
             "fish_up": ArrowTool("fish_up", curvature=1.0),
             "fish_down": ArrowTool("fish_down", curvature=-1.0)
         }
+        for name in ring_templates:
+            self.tools[name] = TemplateTool(name)
         self.current_tool = self.tools["select"]
         App.tool = self.current_tool
 
         self.tool_group.triggered.connect(self._on_tool_changed)
         self.paper.text_editing_finished.connect(self._on_text_editing_finished)
+        self.paper.context_menu_requested.connect(self._on_context_menu)
+
+    # ------------------------------------------------------------ context menu
+    def _on_context_menu(self, obj, x, y):
+        menu = self._build_context_menu(obj)
+        point = self.view.viewport().mapToGlobal(self.view.mapFromScene(QPointF(x, y)))
+        menu.exec(point)
+
+    def _build_context_menu(self, obj):
+        from ..atom import Atom
+        from ..bond import Bond
+
+        menu = QMenu(self)
+        if isinstance(obj, Atom):
+            elements = menu.addMenu("Element")
+            for symbol in common_elements:
+                action = elements.addAction(symbol)
+                action.triggered.connect(
+                    lambda checked=False, s=symbol, a=obj: self._menu_set_symbol(a, s))
+            charge = menu.addMenu("Charge")
+            for label, value in (("Increase (+)", 1), ("Decrease (−)", -1), ("Neutral", 0)):
+                action = charge.addAction(label)
+                action.triggered.connect(
+                    lambda checked=False, v=value, a=obj: self._menu_set_charge(a, v))
+            action = menu.addAction("Edit label…")
+            action.triggered.connect(lambda checked=False, a=obj: self._menu_edit_label(a))
+            menu.addSeparator()
+            action = menu.addAction("Delete atom")
+            action.triggered.connect(lambda checked=False, a=obj: self._menu_delete(a))
+        elif isinstance(obj, Bond):
+            types = menu.addMenu("Bond type")
+            for name in ("single", "double", "triple", "wedge", "hashed_wedge"):
+                action = types.addAction(name.replace("_", " "))
+                action.triggered.connect(
+                    lambda checked=False, t=name, b=obj: self._menu_set_bond_type(b, t))
+            action = menu.addAction("Flip wedge / swap ends")
+            action.triggered.connect(lambda checked=False, b=obj: self._menu_flip_bond(b))
+            menu.addSeparator()
+            action = menu.addAction("Delete bond")
+            action.triggered.connect(lambda checked=False, b=obj: self._menu_delete(b))
+        elif obj is not None:
+            action = menu.addAction("Delete")
+            action.triggered.connect(lambda checked=False, o=obj: self._menu_delete(o))
+        else:
+            menu.addAction(self.action_select_all)
+            menu.addAction(self.action_paste)
+            menu.addAction(self.action_clear)
+
+        if isinstance(obj, (Atom, Bond)):
+            menu.addSeparator()
+            action = menu.addAction("Clean up structure")
+            action.triggered.connect(
+                lambda checked=False, m=obj.molecule: self._cleanup_molecule(m))
+        return menu
+
+    def _menu_set_symbol(self, atom, symbol):
+        atom.set_symbol(symbol)
+        atom.draw()
+        self.paper.save_state_to_undo_stack("Set element")
+
+    def _menu_set_charge(self, atom, value):
+        atom.set_charge(atom.charge + value if value else 0)
+        atom.draw()
+        self.paper.save_state_to_undo_stack("Set charge")
+
+    def _menu_edit_label(self, atom):
+        text, ok = QInputDialog.getText(self, "Atom label",
+                                        "Element or group (OH, Ph, COOH, NO2 ...):",
+                                        text=atom.symbol)
+        if not ok or not text.strip():
+            return
+        text = text.strip()
+        from ..fragments import expand_label
+        if text not in periodic_table and expand_label(atom, text):
+            self.paper.save_state_to_undo_stack("Expand group")
+            return
+        atom.set_symbol(text)
+        atom.draw()
+        self.paper.save_state_to_undo_stack("Set label")
+
+    def _menu_set_bond_type(self, bond, bond_type):
+        bond.set_type(bond_type)
+        bond.draw()
+        for atom in bond.atoms:
+            atom.draw()
+        self.paper.save_state_to_undo_stack("Set bond type")
+
+    def _menu_flip_bond(self, bond):
+        bond.reverse()
+        bond.draw()
+        self.paper.save_state_to_undo_stack("Flip bond")
+
+    def _menu_delete(self, obj):
+        from ..tools import delete_object
+        if delete_object(obj):
+            self.paper.redraw_dirty_objects()
+            self.paper.save_state_to_undo_stack("Delete")
+
+    def _cleanup_molecule(self, mol):
+        """ regenerates a tidy 2D layout, ChemDraw's "Clean Up Structure" """
+        if mol is None or len(mol.atoms) < 2:
+            return
+        from src.vendors.oasa.coords_generator import coords_generator
+        center = mol.get_center()
+        try:
+            coords_generator().calculate_coords(mol, bond_length=1, force=1)
+        except Exception as e:
+            QMessageBox.warning(self, "Clean Up", "Could not lay out the structure: %s" % e)
+            return
+        scale = Settings.bond_length
+        cx = sum(a.x for a in mol.atoms) / len(mol.atoms)
+        cy = sum(a.y for a in mol.atoms) / len(mol.atoms)
+        for atom in mol.atoms:
+            atom.x = center[0] + (atom.x - cx) * scale
+            atom.y = center[1] + (atom.y - cy) * scale
+            atom.on_bond_count_change()
+        mol.scale_val = 1.0
+        for bond in mol.bonds:
+            if bond.auto_second_line_side:
+                bond.second_line_side = None
+        mol.draw()
+        self.paper.save_state_to_undo_stack("Clean up structure")
+
+    def _on_cleanup(self):
+        mol = self._target_molecule()
+        if not mol:
+            QMessageBox.warning(self, "Clean Up", "There is no structure to lay out.")
+            return
+        self._cleanup_molecule(mol)
 
     def _on_text_editing_finished(self):
-        # ChemDraw style: after text is finished, switch back to select tool
         from ..tools import TextTool
+        from ..text_label import TextLabel
+        # a label that was left empty is invisible and can never be clicked
+        # again, so it is dropped instead of littering the page
+        for obj in list(self.paper.objects):
+            if isinstance(obj, TextLabel) and not (obj.text or "").strip():
+                if self.paper.focused_obj is obj:
+                    self.paper.focused_obj = None
+                if self.paper.locked_focus_obj is obj:
+                    self.paper.locked_focus_obj = None
+                obj.delete_from_paper()
+        # ChemDraw style: after text is finished, switch back to select tool
         if isinstance(self.current_tool, TextTool):
-            self.action_select.setChecked(True)
-            self._on_tool_changed(self.action_select)
+            self._activate_select_tool()
 
     def wheelEvent(self, event):
         angle = event.angleDelta().y()
         factor = 1.1 if angle > 0 else 0.9
-        self._zoom(factor)
+        self._zoom(factor, at_cursor=True)
         super().wheelEvent(event)
 
     def keyPressEvent(self, event):
@@ -344,9 +568,6 @@ class SketcherWidget(QWidget):
             from ..bond import Bond
             from ..molecule import Molecule
             if isinstance(self.current_tool, SelectTool) and self.current_tool.objs:
-                # Save undo state BEFORE deletion
-                self.paper.save_state_to_undo_stack()
-                
                 for obj in self.current_tool.objs[:]:
                     if isinstance(obj, Molecule):
                         # Delete entire molecule
@@ -383,13 +604,23 @@ class SketcherWidget(QWidget):
                         obj.delete_from_paper()
                 
                 self.current_tool.objs = []
+                self.current_tool._move_targets = []
                 for o in self.paper.objects:
                     if hasattr(o, 'set_selected'):
                         o.set_selected(False)
+                self.paper.changeFocusTo(None)
+                self.paper.locked_focus_obj = None
+                # the state is saved after the deletion, otherwise the first
+                # redo would bring the deleted objects back
+                self.paper.save_state_to_undo_stack("Delete")
         super().keyPressEvent(event)
 
-    def _zoom(self, factor):
+    def _zoom(self, factor, at_cursor=False):
+        anchor = (QGraphicsView.ViewportAnchor.AnchorUnderMouse if at_cursor
+                  else QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.view.setTransformationAnchor(anchor)
         self.view.scale(factor, factor)
+        self.view.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
 
     def _zoom_reset(self):
         self.view.resetTransform()
@@ -399,7 +630,16 @@ class SketcherWidget(QWidget):
         App.tool = self.current_tool
         super().showEvent(event)
 
+    def _activate_select_tool(self):
+        self.action_select.setChecked(True)
+        self._on_tool_changed(self.action_select)
+
     def _on_tool_changed(self, action):
+        # let the tool that is going away drop its previews and half done work
+        previous = getattr(self, 'current_tool', None)
+        if previous and hasattr(previous, 'clear'):
+            previous.clear()
+
         if action == self.action_bond:
             self.current_tool = self.tools["bond"]
         elif action == self.action_eraser:
@@ -410,12 +650,12 @@ class SketcherWidget(QWidget):
             self.current_tool = self.tools["select"]
         elif action == self.action_rotate:
             self.current_tool = self.tools["rotate"]
-        elif action == self.action_benzene:
-            self.current_tool = self.tools["benzene"]
-        elif action == self.action_cyclohexane:
-            self.current_tool = self.tools["cyclohexane"]
-        elif action == self.action_cyclopentane:
-            self.current_tool = self.tools["cyclopentane"]
+        elif action == self.action_charge_plus:
+            self.current_tool = self.tools["charge_plus"]
+        elif action == self.action_charge_minus:
+            self.current_tool = self.tools["charge_minus"]
+        elif action == self.action_ring:
+            self.current_tool = self.tools[self.ring_combo.currentText()]
         elif action == self.action_arrow:
             self.current_tool = self.tools["arrow"]
         elif action == self.action_equilibrium:
@@ -438,59 +678,206 @@ class SketcherWidget(QWidget):
 
     def _on_bond_type_changed(self, text):
         toolsettings['bond_type'] = text
+        # picking a bond type is only useful with the bond tool in hand
+        if not self.action_bond.isChecked():
+            self.action_bond.setChecked(True)
+            self._on_tool_changed(self.action_bond)
 
     def _on_element_changed(self, text):
+        text = (text or "").strip()
+        if not text:
+            return
         toolsettings['structure'] = text
+        if not self.action_bond.isChecked():
+            self.action_bond.setChecked(True)
+            self._on_tool_changed(self.action_bond)
+
+    def _on_ring_changed(self, text):
+        if text not in self.tools:
+            return
+        self.action_ring.setChecked(True)
+        self._on_tool_changed(self.action_ring)
+
+    def _on_show_carbon_changed(self, text):
+        self.paper.show_carbon = text
+        for obj in self.paper.objects:
+            if hasattr(obj, 'atoms'):
+                for atom in obj.atoms:
+                    atom.visible = None
+                obj.draw()
 
     def _on_clear(self):
-        self.paper.clear()
-        self.paper.save_state_to_undo_stack()
+        if self.paper.objects:
+            answer = QMessageBox.question(
+                self, "Clear", "Remove everything from the page?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self._on_clear_confirmed()
+
+    def _on_clear_confirmed(self):
+        # clear_all() also drops the python side references, a plain
+        # QGraphicsScene.clear() would leave them pointing at deleted items
+        self.paper.clear_all()
+        for tool in self.tools.values():
+            if hasattr(tool, 'clear'):
+                tool.clear()
+        if hasattr(self.current_tool, 'objs'):
+            self.current_tool.objs = []
+            self.current_tool._move_targets = []
 
     def _on_import(self):
-        from ..fileformat_smiles import Smiles
-        from ..tools import SelectTool
-        
-        target_mol = None
-        if isinstance(self.current_tool, SelectTool) and self.current_tool.objs:
-            # Look for a molecule in selected objects
-            for obj in self.current_tool.objs:
-                if obj.class_name == "Molecule":
-                    target_mol = obj
-                    break
-                elif hasattr(obj, 'molecule') and obj.molecule:
-                    target_mol = obj.molecule
-                    break
-                elif hasattr(obj, 'parent') and obj.parent and getattr(obj.parent, 'class_name', None) == "Molecule":
-                    target_mol = obj.parent
-                    break
-        
+        target_mol = self._target_molecule()
         if not target_mol:
-            # Fallback to last molecule if none selected
-            mols = [obj for obj in self.paper.objects if obj.class_name == "Molecule"]
-            if not mols: return
-            target_mol = mols[-1]
-
-        gen = Smiles()
+            QMessageBox.warning(self, "Import", "There is no structure to import.")
+            return
         try:
-            smiles = gen.generate(target_mol)
+            smiles = self._molecule_smiles(target_mol)
             if smiles:
                 self.molecule_imported.emit(smiles)
         except Exception as e:
-            print(f"Error generating SMILES: {e}")
-            # Try to import anyway with a fallback
-            try:
-                # Try without marking aromatic bonds
-                smiles = gen._oasa.get_smiles(target_mol)
-                if smiles:
-                    self.molecule_imported.emit(smiles)
-            except:
-                print("Could not generate SMILES for this molecule structure")
+            QMessageBox.critical(
+                self, "Import",
+                "Could not convert the structure to SMILES: %s" % e)
 
     def _on_undo(self):
         self.paper.undo()
 
     def _on_redo(self):
         self.paper.redo()
+
+    # ------------------------------------------------------------ file / SMILES
+    def _target_molecule(self):
+        """ the molecule the export actions work on: selected one, else the last """
+        from ..tools import SelectTool
+        if isinstance(self.current_tool, SelectTool) and self.current_tool.objs:
+            for obj in self.current_tool.objs:
+                if obj.class_name == "Molecule":
+                    return obj
+                if getattr(obj, 'molecule', None):
+                    return obj.molecule
+                parent = getattr(obj, 'parent', None)
+                if parent is not None and getattr(parent, 'class_name', None) == "Molecule":
+                    return parent
+        mols = [obj for obj in self.paper.objects if obj.class_name == "Molecule"]
+        return mols[-1] if mols else None
+
+    def _molecule_smiles(self, mol):
+        from ..fileformat_smiles import Smiles
+        groups = [a.symbol for a in mol.atoms if a.symbol not in periodic_table]
+        if groups:
+            raise ValueError("the structure contains unexpanded labels: %s"
+                             % ", ".join(sorted(set(groups))))
+        return Smiles().generate(mol)
+
+    def _on_copy_smiles(self):
+        mol = self._target_molecule()
+        if not mol:
+            QMessageBox.warning(self, "SMILES", "There is no structure to convert.")
+            return
+        try:
+            smiles = self._molecule_smiles(mol)
+        except Exception as e:
+            QMessageBox.critical(self, "SMILES", "Could not generate SMILES: %s" % e)
+            return
+        QApplication.clipboard().setText(smiles or "")
+        QMessageBox.information(self, "SMILES", "Copied to clipboard:\n\n%s" % smiles)
+
+    def _on_save_mol(self):
+        mol = self._target_molecule()
+        if not mol:
+            QMessageBox.warning(self, "Save", "There is no structure to save.")
+            return
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Structure", "", "MDL Molfile (*.mol);;SD File (*.sdf)")
+        if not file_path:
+            return
+        try:
+            text = self._to_molfile(mol)
+            with open(file_path, "w") as f:
+                f.write(text)
+                if file_path.lower().endswith(".sdf"):
+                    f.write("$$$$\n")
+        except Exception as e:
+            QMessageBox.critical(self, "Save", "Could not save the structure: %s" % e)
+
+    def _to_molfile(self, mol):
+        """ MDL molfile of a sketched molecule (y is flipped, the paper grows down) """
+        orders = {"single": 1, "double": 2, "triple": 3, "wedge": 1, "hashed_wedge": 1}
+        stereo = {"wedge": 1, "hashed_wedge": 6}
+        atoms = list(mol.atoms)
+        index = {a: i + 1 for i, a in enumerate(atoms)}
+        scale = mol.preferred_bond_length() or 1.0
+        lines = ["", "  PyChem 2D Sketcher", "",
+                 "%3d%3d  0  0  0  0  0  0  0  0999 V2000" % (len(atoms), len(mol.bonds))]
+        for a in atoms:
+            symbol = a.symbol if a.symbol in periodic_table else "C"
+            lines.append("%10.4f%10.4f%10.4f %-3s 0  0  0  0  0  0  0  0  0  0  0  0"
+                         % (a.x / scale, -a.y / scale, 0.0, symbol))
+        for b in mol.bonds:
+            if len(b.atoms) != 2:
+                continue
+            lines.append("%3d%3d%3d%3d  0  0  0" % (index[b.atoms[0]], index[b.atoms[1]],
+                                                    orders.get(b.type, 1),
+                                                    stereo.get(b.type, 0)))
+        charged = [(index[a], a.charge) for a in atoms if a.charge]
+        for i in range(0, len(charged), 8):
+            chunk = charged[i:i + 8]
+            lines.append("M  CHG%3d%s" % (len(chunk),
+                         "".join("%4d%4d" % c for c in chunk)))
+        lines.append("M  END")
+        return "\n".join(lines) + "\n"
+
+    def _on_open_mol(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Structure", "", "Molfiles (*.mol *.sdf *.mdl);;All files (*)")
+        if not file_path:
+            return
+        try:
+            with open(file_path) as f:
+                text = f.read()
+            self._from_molfile(text)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Open", "Could not read the structure: %s" % e)
+
+    def _from_molfile(self, text):
+        from ..molecule import Molecule
+        lines = text.splitlines()
+        if len(lines) < 4:
+            raise ValueError("not a molfile")
+        counts = lines[3]
+        n_atoms, n_bonds = int(counts[0:3]), int(counts[3:6])
+        view_rect = self.view.mapToScene(self.view.viewport().rect()).boundingRect()
+        cx, cy = view_rect.center().x(), view_rect.center().y()
+        scale = Settings.bond_length
+
+        mol = Molecule()
+        self.paper.addObject(mol)
+        atoms = []
+        for line in lines[4:4 + n_atoms]:
+            x, y = float(line[0:10]), float(line[10:20])
+            symbol = line[31:34].strip() or "C"
+            atom = mol.new_atom(symbol if symbol in periodic_table else "C")
+            atom.set_pos(cx + x * scale, cy - y * scale)
+            atoms.append(atom)
+        types = {1: "single", 2: "double", 3: "triple", 4: "double"}
+        for line in lines[4 + n_atoms:4 + n_atoms + n_bonds]:
+            a1, a2, order = int(line[0:3]), int(line[3:6]), int(line[6:9])
+            stereo = int(line[9:12]) if len(line) >= 12 and line[9:12].strip() else 0
+            bond = mol.new_bond()
+            bond.set_type({1: "wedge", 6: "hashed_wedge"}.get(stereo, types.get(order, "single")))
+            bond.connect_atoms(atoms[a1 - 1], atoms[a2 - 1])
+        for line in lines[4 + n_atoms + n_bonds:]:
+            if line.startswith("M  CHG"):
+                values = line[6:].split()
+                for i in range(1, len(values) - 1, 2):
+                    atoms[int(values[i]) - 1].set_charge(int(values[i + 1]))
+            elif line.startswith("M  END") or line.startswith("$$$$"):
+                break
+        mol.draw()
+        self.paper.save_state_to_undo_stack("Open molfile")
 
     def _on_flip_h(self):
         from ..tools import SelectTool

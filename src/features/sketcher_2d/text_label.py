@@ -93,6 +93,7 @@ class TextLabel(DrawableObject):
                     self.text = new_text
                     self.draw()
                 if self.paper:
+                    # the widget drops labels that were left empty
                     self.paper.text_editing_finished.emit()
             if self._focus_item:
                 try:

@@ -45,16 +45,23 @@ class Shape(DrawableObject):
 
     def clear_drawings(self):
         if not self.paper: return
+        # the items may already be gone (undo after a clear), removing them again
+        # must not take the whole redraw down
         for item in self._main_items:
-            self.paper.removeFocusable(item)
-            self.paper.removeItem(item)
+            try:
+                self.paper.removeFocusable(item)
+                self.paper.removeItem(item)
+            except Exception:
+                pass
         self._main_items = []
-        if self._focus_item:
-            self.paper.removeItem(self._focus_item)
-            self._focus_item = None
-        if self._selection_item:
-            self.paper.removeItem(self._selection_item)
-            self._selection_item = None
+        for name in ('_focus_item', '_selection_item'):
+            item = getattr(self, name, None)
+            if item:
+                try:
+                    self.paper.removeItem(item)
+                except (RuntimeError, Exception):
+                    pass
+                setattr(self, name, None)
 
     def set_focus(self, focus):
         if not self.paper: return
