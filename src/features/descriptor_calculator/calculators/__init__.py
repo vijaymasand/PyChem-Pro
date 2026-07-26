@@ -61,12 +61,57 @@ class BaseCalculator:
 
         return distance_matrix
 
+    def ensure_coordinates(self, molecule: "Molecule") -> bool:
+        """Make sure the molecule has 3D coordinates, generating them if needed.
+
+        A structure parsed from SMILES carries no geometry, which would leave
+        every shape, surface and charge-surface descriptor at zero. The project's
+        own generator is used, the same way the LogP batch tool does it.
+        Returns True when coordinates are available afterwards. """
+        atoms = getattr(molecule, 'atoms', None)
+        if not atoms:
+            return False
+        if all(a.x is not None for a in atoms):
+            return True
+        if getattr(molecule, '_descriptor_coordgen_failed', False):
+            return False
+        try:
+            from src.features.layout_3d import generate_3d_coordinates
+            generate_3d_coordinates(molecule, optimize=True, max_opt_steps=100)
+        except Exception:
+            pass
+        if all(a.x is not None for a in atoms):
+            return True
+        molecule._descriptor_coordgen_failed = True
+        return False
+
+    def ensure_charges(self, molecule: "Molecule"):
+        """Compute Gasteiger partial charges once when the molecule has none.
+
+        Without this every charge based descriptor silently reports zero for
+        structures that were never passed through a charge calculation. """
+        atoms = getattr(molecule, 'atoms', None)
+        if not atoms:
+            return
+        if any(abs(getattr(a, 'partial_charge', 0.0) or 0.0) > 1e-9 for a in atoms):
+            return
+        if getattr(molecule, '_descriptor_charges_failed', False):
+            return
+        try:
+            from ...cheminformatics.electrostatics.gasteiger import compute_gasteiger_charges
+            compute_gasteiger_charges(molecule)
+        except Exception:
+            molecule._descriptor_charges_failed = True
+
     def get_gyration_eigenvalues(self, molecule: "Molecule", selection: "AtomSelection") -> np.ndarray:
         """Helper to compute eigenvalues of the gyration tensor."""
+        self.ensure_coordinates(molecule)
         coords = []
         for idx in selection.atom_indices:
             if idx < len(molecule.atoms):
                 atom = molecule.atoms[idx]
+                if atom.x is None or atom.y is None or atom.z is None:
+                    continue
                 coords.append([atom.x, atom.y, atom.z])
 
         if not coords or len(coords) < 2:
@@ -101,7 +146,9 @@ class BaseCalculator:
                   if bond.begin_atom_idx in selected_set and bond.end_atom_idx in selected_set)
 
 
-# Export all calculators
+# Export all calculators. The Extended* classes subclass the basic ones and add
+# the descriptor families documented in MOLECULAR_DESCRIPTORS.md; the engine
+# instantiates those, so a single object per category serves both sets.
 from .constitutional import ConstitutionalCalculator
 from .topological import TopologicalCalculator
 from .geometric import GeometricCalculator
@@ -109,6 +156,12 @@ from .electronic import ElectronicCalculator
 from .quantum import QuantumCalculator
 from .fingerprints import FingerprintCalculator
 from .hybrid import HybridCalculator
+from .constitutional_ext import ExtendedConstitutionalCalculator
+from .topological_ext import ExtendedTopologicalCalculator
+from .geometric_ext import ExtendedGeometricCalculator
+from .electronic_ext import ExtendedElectronicCalculator
+from .quantum_ext import ExtendedQuantumCalculator
+from .hybrid_ext import ExtendedHybridCalculator
 
 __all__ = [
     'BaseCalculator',
@@ -119,4 +172,10 @@ __all__ = [
     'QuantumCalculator',
     'FingerprintCalculator',
     'HybridCalculator',
+    'ExtendedConstitutionalCalculator',
+    'ExtendedTopologicalCalculator',
+    'ExtendedGeometricCalculator',
+    'ExtendedElectronicCalculator',
+    'ExtendedQuantumCalculator',
+    'ExtendedHybridCalculator',
 ]

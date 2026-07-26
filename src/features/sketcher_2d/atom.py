@@ -4,7 +4,8 @@ from math import cos, sin
 from math import pi as PI
 import re
 
-from .app_data import Settings, periodic_table, auto_hydrogen_elements
+from .app_data import (Settings, periodic_table, auto_hydrogen_elements,
+                       lone_pair_elements, electron_deficient_elements)
 from src.vendors.oasa.atom import atom as OasaAtom
 from .drawing_parents import DrawableObject, Color, Font, Align
 from .common import list_difference, find_matching_parentheses
@@ -65,6 +66,19 @@ class Atom(OasaAtom, DrawableObject):
     def __str__(self):
         return self.id
 
+    # OASA refuses any symbol that is not a real element. The sketcher also has to
+    # carry group labels (OH, Ph, COOH...), so the setter is relaxed here.
+    def _set_symbol(self, symbol):
+        if symbol in periodic_table:
+            OasaAtom._set_symbol(self, symbol)
+        else:
+            self._clean_cache()
+            self._symbol = symbol
+            self.symbol_number = 0
+            self.valency = 1
+
+    symbol = property(OasaAtom._get_symbol, _set_symbol, None, "atom symbol")
+
     @property
     def parent(self):
         return self.molecule
@@ -97,6 +111,7 @@ class Atom(OasaAtom, DrawableObject):
         self.visible = None
         self.is_group = symbol not in periodic_table
         self._text = None
+        self._alignment = None
         self.text_layout = "Auto"
         self.isotope = None
         self.auto_hydrogens = True
@@ -116,6 +131,8 @@ class Atom(OasaAtom, DrawableObject):
 
     def set_charge(self, val):
         self.charge = val
+        self.marks_pos = []
+        self._update_valency()
 
     def update_visibility(self):
         if not self.molecule or not self.molecule.paper:
@@ -330,14 +347,29 @@ class Atom(OasaAtom, DrawableObject):
         # We don't set self.occupied_valency because it's a read-only property in OasaAtom
         self._update_valency(val)
 
+    def _charge_corrected_valency(self, valency):
+        """ a charge changes the number of bonds an atom can carry """
+        if not self.charge:
+            return valency
+        if self.symbol in lone_pair_elements:
+            # a lone pair becomes a bonding site when positive (N+ -> 4, O+ -> 3)
+            return max(0, valency + self.charge)
+        if self.symbol in electron_deficient_elements:
+            return max(0, valency - self.charge)
+        # C, Si, ... : both the cation and the anion lose one bonding site
+        return max(0, valency - abs(self.charge))
+
     def _update_valency(self, current_occupied=None):
         if current_occupied is None:
             current_occupied = self.occupied_valency
-            
+
         if not self.auto_hydrogens or self.is_group:
             self.valency = current_occupied
             return
-        valencies = periodic_table[self.symbol]["valency"]
+        valencies = [self._charge_corrected_valency(v)
+                     for v in periodic_table[self.symbol]["valency"]]
+        # first valency (in preference order) that can hold the existing bonds
+        self.valency = max(valencies)
         for val in valencies:
             if val >= current_occupied:
                 self.valency = val
