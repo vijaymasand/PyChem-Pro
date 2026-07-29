@@ -104,36 +104,6 @@ This makes PyChem-Pro:
 
 ---
 
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     PUBLIC API LAYER (pychem/)                       │
-│  No Qt dependency. Jupyter-friendly.                                 │
-│  import pychem; pychem.parse_smiles("CCO"); pychem.optimize(mol)     │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │
-┌──────────────────────────────▼──────────────────────────────────────┐
-│                     SERVICE REGISTRY (src/core/registry.py)          │
-│  Plain Python factory, no DI framework.                              │
-│  registry.forcefield, registry.loader, registry.descriptors, ...     │
-└───┬──────────┬──────────┬──────────┬──────────┬──────────┬─────────┘
-    │          │          │          │          │          │
-┌───▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼───┐ ┌───▼────┐
-│Force  │ │Render │ │Loader │ │Coord  │ │Descr  │ │Plugin  │
-│Field  │ │Service│ │Service│ │Gen    │ │Calc   │ │Manager │
-└───┬───┘ └───┬───┘ └───┬───┘ └───┬───┘ └───┬───┘ └───┬────┘
-    │         │         │         │         │         │
-┌───▼─────────▼─────────▼─────────▼─────────▼─────────▼──────────────┐
-│                     CORE DOMAIN (src/core/domain/)                   │
-│  Molecule, Atom, Bond, Element — zero external dependencies          │
-└─────────────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────────────┐
-│                     INFRASTRUCTURE (src/core/)                       │
-│  EventBus, ParallelExecutor, Protocols, Performance Profiler         │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
 **Dependency rules (enforced by convention):**
 
 1. Core domain imports nothing from services, features, app, or Qt.
