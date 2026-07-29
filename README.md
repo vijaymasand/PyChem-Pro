@@ -104,32 +104,6 @@ This makes PyChem-Pro:
 ---
 ## Rendering Pipeline
 
-The 3D viewer (`src/features/visualization_3d/ui/mol_viewer_3d.py`) paints directly via QPainter. Rendering logic is extracted into `painter_renderer.py` (the engine) and `mouse_controller.py` (interaction).
-
-### Optimizations
-
-- **Gradient cache.** `QRadialGradient` color stops are cached by `(element, radius_bucket, is_hovered, use_ssao, depth_bucket)`. Rebuilding a positioned gradient from cached stops is free; the expensive color arithmetic runs once per unique atom type.
-- **Off-screen culling.** Atoms and bonds outside the viewport plus a 50-100 pixel margin are skipped before any draw call.
-- **LOD (Level of Detail).** Atoms projected to less than 2 px radius are drawn as plain filled circles instead of gradient spheres.
-- **Parallel pre-render.** For large molecules, projection, depth sort, and visibility culling can be split across `ParallelExecutor` workers (in `src/services/rendering/parallel_projection.py`). Draw calls themselves remain on the main thread per Qt's threading model.
-
-### Protein cartoon rendering
-
-`src/features/visualization_3d/services/protein_rendering.py` implements:
-
-- Simplified DSSP-style secondary structure detection (~85% accuracy on standard tests)
-- Catmull-Rom spline smoothing for ribbon paths
-- PyMOL-style cartoon tubes for helices, flat ribbons with arrow heads for sheets, thin coils for loops
-- Color schemes: secondary structure, rainbow, by chain, by B-factor
-
-![Protein Visualization](assets/Protein-Visual.png)
-
-*Ramachandran plot analysis for validation of protein backbones:*
-
-![Ramachandran Plot](assets/ramachandran_plot.png)
-
----
-
 **Dependency rules (enforced by convention):**
 
 1. Core domain imports nothing from services, features, app, or Qt.
