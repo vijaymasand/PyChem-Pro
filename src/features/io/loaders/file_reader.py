@@ -728,6 +728,9 @@ def _auto_bond_pdb(mol):
     # 1. Residue-topology bonding (Backbone)
     residue_atoms = defaultdict(dict)
     for i, atom in enumerate(mol.atoms):
+        res_name = getattr(atom, 'res_name', '')
+        if res_name and res_name.upper() not in _PROTEIN_RESIDUES:
+            continue
         c, s, n_ = getattr(atom, 'chain_id',''), getattr(atom, 'res_seq',None), getattr(atom, 'pdb_name',None)
         if s is not None and n_:
             name = n_.strip()
