@@ -1192,3 +1192,52 @@ class ShapeTool(Tool):
                 App.paper.save_state_to_undo_stack(f"Add {self.current_shape.class_name}")
         self.p1 = None
         self.current_shape = None
+
+
+class LonePairTool(Tool):
+    """ Adds or removes lone pairs on the clicked atom. """
+    def __init__(self):
+        super().__init__()
+
+    def on_mouse_press(self, x, y):
+        focused = App.paper.focused_obj
+        if not isinstance(focused, Atom):
+            focused = App.paper.find_closest_atom(x, y, 12)
+        if isinstance(focused, Atom):
+            focused.lonepairs = (getattr(focused, "lonepairs", 0) + 1) % 4
+            focused.draw()
+            App.paper.save_state_to_undo_stack("Lone Pair")
+
+
+class RadicalPlusTool(Tool):
+    """ Toggles a radical dot with a plus sign on the clicked atom. """
+    def __init__(self):
+        super().__init__()
+
+    def on_mouse_press(self, x, y):
+        focused = App.paper.focused_obj
+        if not isinstance(focused, Atom):
+            focused = App.paper.find_closest_atom(x, y, 12)
+        if isinstance(focused, Atom):
+            focused.radical_plus = 1 - getattr(focused, "radical_plus", 0)
+            if focused.radical_plus:
+                focused.radical_minus = 0
+            focused.draw()
+            App.paper.save_state_to_undo_stack("Radical +")
+
+
+class RadicalMinusTool(Tool):
+    """ Toggles a radical dot with a minus sign on the clicked atom. """
+    def __init__(self):
+        super().__init__()
+
+    def on_mouse_press(self, x, y):
+        focused = App.paper.focused_obj
+        if not isinstance(focused, Atom):
+            focused = App.paper.find_closest_atom(x, y, 12)
+        if isinstance(focused, Atom):
+            focused.radical_minus = 1 - getattr(focused, "radical_minus", 0)
+            if focused.radical_minus:
+                focused.radical_plus = 0
+            focused.draw()
+            App.paper.save_state_to_undo_stack("Radical −")
