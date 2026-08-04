@@ -38,10 +38,15 @@ import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
 
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Lasso, Ridge
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.svm import SVR
+from sklearn.cross_decomposition import PLSRegression
+from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.model_selection import LeaveOneOut, KFold, RandomizedSearchCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import make_scorer
+
 
 try:
     import xgboost as xgb
@@ -100,6 +105,37 @@ def standardize_residuals(residuals: np.ndarray) -> np.ndarray:
     s = np.std(residuals, ddof=1) if len(residuals) > 1 else 1.0
     return residuals / s if s != 0 else np.zeros_like(residuals)
 
+def expand_sequence_columns(df: pd.DataFrame) -> pd.DataFrame:
+    new_cols = {}
+    cols_to_drop = []
+    for col in df.columns:
+        non_nulls = df[col].dropna()
+        if non_nulls.empty: continue
+        first_val = non_nulls.iloc[0]
+        
+        if isinstance(first_val, str) and first_val.startswith('[') and first_val.endswith(']'):
+            try:
+                import ast
+                parsed = ast.literal_eval(first_val)
+                if isinstance(parsed, (list, tuple)):
+                    df[col] = df[col].apply(lambda val: ast.literal_eval(val) if isinstance(val, str) else val)
+                    first_val = parsed
+            except:
+                pass
+                
+        if isinstance(first_val, (list, tuple, np.ndarray)):
+            cols_to_drop.append(col)
+            expanded = pd.DataFrame(df[col].tolist(), index=df.index)
+            expanded.columns = [f"{col}_{i}" for i in range(expanded.shape[1])]
+            for c in expanded.columns:
+                new_cols[c] = expanded[c]
+                
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+        for c, s in new_cols.items():
+            df[c] = s
+    return df
+
 # ===================================================================
 # DATA CONTAINERS
 # ===================================================================
@@ -131,6 +167,7 @@ class ModelResult:
 class QSAREngine:
     def __init__(self):
         self.df: Optional[pd.DataFrame] = None
+        self.df_test: Optional[pd.DataFrame] = None
         self.split_col: Optional[str] = None
         self.y_col: Optional[str] = None
         self.x_cols: List[str] = []
@@ -138,17 +175,33 @@ class QSAREngine:
         self.te_idx: Optional[np.ndarray] = None
 
     def load_dataframe(self, df: pd.DataFrame, missing_val: Optional[float] = -999.0):
-        self.df = df.copy()
+        self.df = expand_sequence_columns(df.copy())
         if missing_val is not None:
             self.df = self.df.replace(missing_val, np.nan)
+
+    def load_test_dataframe(self, df: pd.DataFrame, missing_val: Optional[float] = -999.0):
+        self.df_test = expand_sequence_columns(df.copy())
+        if missing_val is not None:
+            self.df_test = self.df_test.replace(missing_val, np.nan)
 
     def set_setup(self, y_col: str, x_cols: List[str], split_col: Optional[str] = None):
         self.y_col, self.x_cols, self.split_col = y_col, x_cols, split_col
         if self.df is None: raise ValueError("No dataset loaded")
 
-        if split_col and split_col in self.df.columns:
-            sv = self.df[split_col].fillna(0).astype(int).values
-            self.tr_idx, self.te_idx = np.where(sv == 1)[0], np.where(sv == 2)[0]
+        if self.df_test is not None:
+            self.tr_idx = np.where(self.df[self.y_col].notna().values)[0]
+            self.te_idx = np.where(self.df_test[self.y_col].notna().values)[0]
+        elif split_col and split_col in self.df.columns:
+            tr_indices = []
+            te_indices = []
+            for idx, x in enumerate(self.df[split_col].values):
+                val = str(x).strip().lower() if pd.notna(x) else ""
+                if any(val.startswith(pfx) for pfx in ("train", "tr", "1")):
+                    tr_indices.append(idx)
+                elif any(val.startswith(pfx) for pfx in ("test", "te", "ext", "2")):
+                    te_indices.append(idx)
+            self.tr_idx = np.array(tr_indices, dtype=int)
+            self.te_idx = np.array(te_indices, dtype=int)
         else:
             self.tr_idx = np.where(self.df[self.y_col].notna().values)[0]
             self.te_idx = np.array([], dtype=int)
@@ -158,7 +211,11 @@ class QSAREngine:
         y_tr = df_tr[self.y_col].values.astype(float)
         X_tr = df_tr[cols].values.astype(float)
 
-        if len(self.te_idx) > 0:
+        if self.df_test is not None:
+            df_te = self.df_test.iloc[self.te_idx][[self.y_col] + cols].dropna()
+            y_te = df_te[self.y_col].values.astype(float)
+            X_te = df_te[cols].values.astype(float)
+        elif len(self.te_idx) > 0:
             df_te = self.df.iloc[self.te_idx][[self.y_col] + cols].dropna()
             y_te = df_te[self.y_col].values.astype(float)
             X_te = df_te[cols].values.astype(float)
@@ -168,98 +225,153 @@ class QSAREngine:
         scaler = StandardScaler()
         return scaler.fit_transform(X_tr), y_tr, scaler.transform(X_te) if len(X_te) else X_te, y_te, scaler
 
-    def train_ols(self, cols: List[str]) -> Optional[ModelResult]:
+    def train_model(self, cols: List[str], model_type: str, config: Optional[dict] = None) -> Optional[ModelResult]:
         if not cols: return None
-        X_tr, y_tr, X_te, y_te, _ = self._prepare_xy(cols)
+        if config is None: config = {}
+        X_tr, y_tr, X_te, y_te, scaler = self._prepare_xy(cols)
         n, p = X_tr.shape
         if n <= p + 1: return None
 
-        lr = LinearRegression().fit(X_tr, y_tr)
-        yhat_tr = lr.predict(X_tr)
+        model_obj = None
+        if model_type == 'OLS':
+            model_obj = LinearRegression()
+        elif model_type == 'Ridge':
+            alpha = float(config.get('ridge_alpha', 1.0))
+            model_obj = Ridge(alpha=alpha)
+        elif model_type == 'Lasso':
+            alpha = float(config.get('lasso_alpha', 1.0))
+            model_obj = Lasso(alpha=alpha)
+        elif model_type == 'PLS':
+            n_comp = int(config.get('pls_components', 2))
+            model_obj = PLSRegression(n_components=min(n_comp, p))
+        elif model_type == 'RF':
+            n_est = int(config.get('rf_estimators', 100))
+            model_obj = RandomForestRegressor(n_estimators=n_est, random_state=42)
+        elif model_type == 'SVR':
+            C = float(config.get('svr_C', 1.0))
+            eps = float(config.get('svr_epsilon', 0.1))
+            model_obj = SVR(C=C, epsilon=eps)
+        elif model_type == 'XGB':
+            if xgb is None: raise RuntimeError("XGBoost not installed.")
+            def parse_range(val, is_float=False):
+                parts = [v.strip() for v in str(val).split(',')]
+                if len(parts) == 1: return [float(parts[0]) if is_float else int(parts[0])]
+                return np.linspace(float(parts[0]), float(parts[1]), 10) if is_float else np.arange(int(parts[0]), int(parts[1]), max(1, (int(parts[1])-int(parts[0]))//5))
+            
+            xgbr = xgb.XGBRegressor(objective='reg:squarederror', random_state=42)
+            param_dist = {
+                'n_estimators': parse_range(config.get('n_estimators', '100,500'), False),
+                'max_depth': parse_range(config.get('max_depth', '2,6'), False),
+                'learning_rate': parse_range(config.get('learning_rate', '0.01,0.2'), True)
+            }
+            cv_folds = int(config.get('cv_folds', 5))
+            n_iter = int(config.get('n_iter', 20))
+            rs = RandomizedSearchCV(xgbr, param_distributions=param_dist, n_iter=n_iter,
+                                    scoring=make_scorer(lambda y, yhat: -rmse(y, yhat)),
+                                    cv=KFold(n_splits=min(cv_folds, len(y_tr)), shuffle=True, random_state=42), random_state=42)
+            rs.fit(X_tr, y_tr)
+            model_obj = rs.best_estimator_
+
+        if model_type != 'XGB':
+            model_obj.fit(X_tr, y_tr)
+        
+        yhat_tr = np.ravel(model_obj.predict(X_tr))
 
         yhat_loo = np.zeros(n)
-        for tr, te in LeaveOneOut().split(X_tr):
-            yhat_loo[te[0]] = LinearRegression().fit(X_tr[tr], y_tr[tr]).predict(X_tr[te])
+        if n <= 50:
+            cv_strategy = LeaveOneOut()
+        else:
+            cv_strategy = KFold(n_splits=5, shuffle=True, random_state=42)
+            
+        for tr, te in cv_strategy.split(X_tr):
+            if model_type == 'OLS':
+                fold_model = LinearRegression()
+            elif model_type == 'Ridge':
+                fold_model = Ridge(alpha=float(config.get('ridge_alpha', 1.0)))
+            elif model_type == 'Lasso':
+                fold_model = Lasso(alpha=float(config.get('lasso_alpha', 1.0)))
+            elif model_type == 'PLS':
+                fold_model = PLSRegression(n_components=min(int(config.get('pls_components', 2)), p))
+            elif model_type == 'RF':
+                fold_model = RandomForestRegressor(n_estimators=int(config.get('rf_estimators', 100)), random_state=42)
+            elif model_type == 'SVR':
+                fold_model = SVR(C=float(config.get('svr_C', 1.0)), epsilon=float(config.get('svr_epsilon', 0.1)))
+            elif model_type == 'XGB':
+                fold_model = xgb.XGBRegressor(**model_obj.get_params())
+            
+            fold_model.fit(X_tr[tr], y_tr[tr])
+            yhat_loo[te] = np.ravel(fold_model.predict(X_tr[te]))
 
         metrics_ext = {}
         if len(y_te) > 0:
-            yhat_te = lr.predict(X_te)
+            yhat_te = np.ravel(model_obj.predict(X_te))
             ss_res, ss_tot = np.sum((y_te - yhat_te) ** 2), np.sum((y_te - np.mean(y_te)) ** 2)
+            r2ext = 1 - ss_res / ss_tot if ss_tot > 0 else float('nan')
+            
+            den_f1 = np.sum((y_te - np.mean(y_tr)) ** 2)
+            q2_f1 = 1 - (ss_res / den_f1) if den_f1 > 0 else float('nan')
+            q2_f2 = r2ext
+            den_f3 = np.sum((y_tr - np.mean(y_tr)) ** 2) / n
+            q2_f3 = 1 - ((ss_res / len(y_te)) / den_f3) if den_f3 > 0 else float('nan')
+            
+            try:
+                k_val = np.sum(y_te * yhat_te) / np.sum(y_te ** 2) if np.sum(y_te ** 2) > 0 else 1.0
+                k_prime_val = np.sum(y_te * yhat_te) / np.sum(yhat_te ** 2) if np.sum(yhat_te ** 2) > 0 else 1.0
+            except:
+                k_val, k_prime_val = 1.0, 1.0
+                
+            r2_zero = 1 - (np.sum((y_te - k_val * y_te)**2) / np.sum(y_te**2)) if np.sum(y_te**2) != 0 else 0
+            r_prime2_zero = 1 - (np.sum((y_te - k_prime_val * yhat_te)**2) / np.sum(yhat_te**2)) if np.sum(yhat_te**2) != 0 else 0
+            r2_zero_diff = abs(r2_zero - r_prime2_zero)
+            
+            gt_passed = (
+                (r2ext > 0.5 if not np.isnan(r2ext) else False) and
+                r2_zero_diff < 0.3 and
+                0.85 <= k_val <= 1.15 and
+                0.85 <= k_prime_val <= 1.15
+            )
+            
             metrics_ext = {
-                "R2ext": 1 - ss_res / ss_tot if ss_tot > 0 else float('nan'),
-                "RMSEext": rmse(y_te, yhat_te), "MAEext": mae(y_te, yhat_te), "CCCext": concordance_cc(y_te, yhat_te),
+                "R2ext": r2ext, "RMSEext": rmse(y_te, yhat_te), "MAEext": mae(y_te, yhat_te), "CCCext": concordance_cc(y_te, yhat_te),
+                "Q2_F1": q2_f1, "Q2_F2": q2_f2, "Q2_F3": q2_f3,
+                "GT_k": k_val, "GT_k_prime": k_prime_val, "GT_diff": r2_zero_diff, "GT_passed": gt_passed
             }
 
+        coef = None
+        intercept = None
+        if model_type in ('OLS', 'Ridge', 'Lasso'):
+            coef = model_obj.coef_
+            intercept = float(model_obj.intercept_)
+        elif model_type == 'PLS':
+            coef = model_obj.coef_.ravel()
+            intercept = float(model_obj._y_mean[0])
+
+        r2_tr = 1 - np.sum((y_tr - yhat_tr)**2) / np.sum((y_tr - np.mean(y_tr))**2)
+        
+        X_tr_1 = np.c_[np.ones((n, 1)), X_tr]
+        hat_diag = leverage_hat(X_tr_1)
+        std_resid_fit = standardize_residuals(y_tr - yhat_tr)
+        xgb_params = model_obj.get_params() if model_type == 'XGB' else None
+
         return ModelResult(
-            size=len(cols), descriptors=cols, model_type='OLS',
-            coef=lr.coef_.copy(), intercept=float(lr.intercept_),
-            r2_tr=lr.score(X_tr, y_tr), r2_adj=adjusted_r2(lr.score(X_tr, y_tr), n, p),
+            size=len(cols), descriptors=cols, model_type=model_type,
+            coef=coef, intercept=intercept,
+            r2_tr=r2_tr, r2_adj=adjusted_r2(r2_tr, n, p),
             rmse_tr=rmse(y_tr, yhat_tr), mae_tr=mae(y_tr, yhat_tr),
             q2_loo=loo_q2(y_tr, yhat_loo), rmse_cv=rmse(y_tr, yhat_loo),
             yhat_tr=yhat_tr, yhat_loo=yhat_loo, metrics_ext=metrics_ext,
-            hat_diag=leverage_hat(np.c_[np.ones((n, 1)), X_tr]), std_resid_fit=standardize_residuals(y_tr - yhat_tr)
+            hat_diag=hat_diag, std_resid_fit=std_resid_fit,
+            xgb_best_params_=xgb_params, xgb_model_obj=model_obj, X_tr_scaled=X_tr
         )
 
-    def train_xgb(self, cols: List[str], xgb_config: dict) -> Optional[ModelResult]:
-        if xgb is None: raise RuntimeError("XGBoost not installed.")
-        X_tr, y_tr, X_te, y_te, _ = self._prepare_xy(cols)
-        if len(X_tr) <= 5: return None
-
-        def parse_range(val, is_float=False):
-            parts = [v.strip() for v in str(val).split(',')]
-            if len(parts) == 1: return [float(parts[0]) if is_float else int(parts[0])]
-            return np.linspace(float(parts[0]), float(parts[1]), 10) if is_float else np.arange(int(parts[0]), int(parts[1]), max(1, (int(parts[1])-int(parts[0]))//5))
-
-        xgbr = xgb.XGBRegressor(objective='reg:squarederror', random_state=42)
-        param_dist = {
-            'n_estimators': parse_range(xgb_config['n_estimators'], False),
-            'max_depth': parse_range(xgb_config['max_depth'], False),
-            'learning_rate': parse_range(xgb_config['learning_rate'], True)
-        }
-
-        cv_folds = int(xgb_config.get('cv_folds', 5))
-        n_iter = int(xgb_config.get('n_iter', 20))
-
-        rs = RandomizedSearchCV(xgbr, param_distributions=param_dist, n_iter=n_iter,
-                                scoring=make_scorer(lambda y, yhat: -rmse(y, yhat)),
-                                cv=KFold(n_splits=min(cv_folds, len(y_tr)), shuffle=True, random_state=42), random_state=42)
-        rs.fit(X_tr, y_tr)
-        best = rs.best_estimator_
-        yhat_tr = best.predict(X_tr)
-
-        yhat_cv = np.zeros_like(y_tr, dtype=float)
-        for tr, te in KFold(n_splits=min(5, len(y_tr)), shuffle=True, random_state=42).split(X_tr):
-            m = xgb.XGBRegressor(**best.get_params()).fit(X_tr[tr], y_tr[tr])
-            yhat_cv[te] = m.predict(X_tr[te])
-
-        metrics_ext = {}
-        if len(y_te) > 0:
-            yhat_te = best.predict(X_te)
-            ss_res, ss_tot = np.sum((y_te - yhat_te)**2), np.sum((y_te - np.mean(y_te))**2)
-            metrics_ext = {
-                "R2ext": 1 - ss_res / ss_tot if ss_tot > 0 else float('nan'),
-                "RMSEext": rmse(y_te, yhat_te), "MAEext": mae(y_te, yhat_te), "CCCext": concordance_cc(y_te, yhat_te)
-            }
-
-        r2 = 1 - np.sum((y_tr - yhat_tr)**2) / np.sum((y_tr - np.mean(y_tr))**2)
-
-        return ModelResult(
-            size=len(cols), descriptors=cols, model_type='XGB', coef=None, intercept=None,
-            r2_tr=r2, r2_adj=adjusted_r2(r2, X_tr.shape[0], X_tr.shape[1]),
-            rmse_tr=rmse(y_tr, yhat_tr), mae_tr=mae(y_tr, yhat_tr),
-            q2_loo=loo_q2(y_tr, yhat_cv), rmse_cv=rmse(y_tr, yhat_cv),
-            yhat_tr=yhat_tr, yhat_loo=yhat_cv, metrics_ext=metrics_ext,
-            xgb_best_params_=best.get_params(), xgb_model_obj=best, X_tr_scaled=X_tr
-        )
-
-    def ga_feature_selection(self, model_type: str, min_f: int, max_f: int, pop_size: int, gen: int, xgb_config: dict, logger_callback) -> ModelResult:
+    def ga_feature_selection(self, model_type: str, min_f: int, max_f: int, pop_size: int, gen: int, config: dict, logger_callback) -> ModelResult:
         rng = np.random.RandomState(42)
         d = len(self.x_cols)
 
         def fitness(mask):
             cols = [self.x_cols[i] for i, b in enumerate(mask) if b]
             try:
-                res = self.train_xgb(cols, xgb_config) if model_type == 'XGB' else self.train_ols(cols)
+                res = self.train_model(cols, model_type, config)
                 if res is None or np.isnan(res.q2_loo): return -np.inf, None
                 return (res.q2_loo, -res.rmse_cv, -len(cols)), res
             except Exception: return -np.inf, None
@@ -328,7 +440,7 @@ class ModelingWorker(QThread):
                 )
             else:
                 self.log_signal.emit(f"Fitting single {self.model_type} model...")
-                res = self.engine.train_xgb(self.engine.x_cols, self.config) if self.model_type == 'XGB' else self.engine.train_ols(self.engine.x_cols)
+                res = self.engine.train_model(self.engine.x_cols, self.model_type, self.config)
 
             if res:
                 self.result_signal.emit(res)
@@ -352,32 +464,62 @@ class QsarModelerWidget(PluginWidget):
         self.widget = QWidget()
         main_layout = QVBoxLayout(self.widget)
 
-        # --- 1. Data Loading ---
-        data_layout = QHBoxLayout()
+        # --- 1 & 2. Data Loading & Variable Setup (Horizontal Layout) ---
+        top_layout = QHBoxLayout()
+
+        # Step 1: Data Source
+        data_widget = QWidget()
+        data_layout = QHBoxLayout(data_widget)
+        data_layout.setContentsMargins(0, 0, 0, 0)
         data_layout.addWidget(QLabel("<b>1. Data Source:</b>"))
-        self.btn_load = QPushButton("Load CSV Dataset")
+        self.btn_load = QPushButton("Load Train CSV")
         self.btn_load.clicked.connect(self.load_data)
         data_layout.addWidget(self.btn_load)
-        self.lbl_file = QLabel("No file loaded")
+        
+        self.btn_load_test = QPushButton("Load Test CSV (Optional)")
+        self.btn_load_test.clicked.connect(self.load_test_data)
+        data_layout.addWidget(self.btn_load_test)
+        
+        self.lbl_file = QLabel("No files loaded")
         data_layout.addWidget(self.lbl_file)
-        data_layout.addStretch()
-        main_layout.addLayout(data_layout)
+        top_layout.addWidget(data_widget)
 
-        # --- 2. Setup Variables ---
-        setup_layout = QHBoxLayout()
+        top_layout.addSpacing(20)
+
+        # Step 2: Variable Setup
+        setup_widget = QWidget()
+        setup_layout = QHBoxLayout(setup_widget)
+        setup_layout.setContentsMargins(0, 0, 0, 0)
         setup_layout.addWidget(QLabel("<b>2. Variable Setup:</b>"))
         setup_layout.addWidget(QLabel("Target (Y):"))
         self.cmb_y = QComboBox()
         setup_layout.addWidget(self.cmb_y)
-        setup_layout.addWidget(QLabel("Split Column (0/1/2):"))
+        setup_layout.addWidget(QLabel("Split Column:"))
         self.cmb_split = QComboBox()
         setup_layout.addWidget(self.cmb_split)
 
-        self.btn_apply_setup = QPushButton("Apply Setup")
-        self.btn_apply_setup.clicked.connect(self.apply_setup)
-        setup_layout.addWidget(self.btn_apply_setup)
-        setup_layout.addStretch()
-        main_layout.addLayout(setup_layout)
+        setup_layout.addWidget(QLabel("Split Algo:"))
+        from src.features.data_splitting.split_engine import DataSplitEngine
+        self.cmb_split_algo.addItems(DataSplitEngine.available_algorithms())
+        setup_layout.addWidget(self.cmb_split_algo)
+
+        setup_layout.addWidget(QLabel("SMILES Col:"))
+        self.cmb_smiles_col = QComboBox()
+        setup_layout.addWidget(self.cmb_smiles_col)
+
+        setup_layout.addWidget(QLabel("Train Ratio:"))
+        self.txt_train_ratio = QComboBox()
+        self.txt_train_ratio.addItems(["0.8", "0.7", "0.75", "0.9", "0.5"])
+        self.txt_train_ratio.setEditable(True)
+        setup_layout.addWidget(self.txt_train_ratio)
+
+        self.btn_run_split = QPushButton("Split")
+        self.btn_run_split.clicked.connect(self.run_inline_split)
+        setup_layout.addWidget(self.btn_run_split)
+
+        top_layout.addWidget(setup_widget)
+        top_layout.addStretch()
+        main_layout.addLayout(top_layout)
 
         # --- 3. Descriptor Selection (Dual Table UX) ---
         main_layout.addWidget(QLabel("<b>3. Descriptor Selection:</b>"))
@@ -408,12 +550,12 @@ class QsarModelerWidget(PluginWidget):
 
         main_layout.addLayout(desc_layout)
 
-        # --- 4. Model Settings ---
+        # --- 4. Model Settings (Algorithms & Hyperparameters) ---
         main_layout.addWidget(QLabel("<b>4. Algorithm & Hyperparameters:</b>"))
         algo_layout = QHBoxLayout()
         algo_layout.addWidget(QLabel("Model:"))
         self.cmb_model = QComboBox()
-        self.cmb_model.addItems(["OLS", "XGB"])
+        self.cmb_model.addItems(["OLS", "Ridge", "Lasso", "PLS", "RF", "SVR", "XGB"])
         algo_layout.addWidget(self.cmb_model)
 
         algo_layout.addWidget(QLabel("Feature Selection:"))
@@ -432,7 +574,9 @@ class QsarModelerWidget(PluginWidget):
         default_settings = [
             ("ga_min", "1"), ("ga_max", "8"), ("ga_pop", "30"), ("ga_gen", "40"),
             ("n_estimators", "100, 500"), ("max_depth", "2, 6"),
-            ("learning_rate", "0.01, 0.2"), ("n_iter", "20"), ("cv_folds", "5")
+            ("learning_rate", "0.01, 0.2"), ("n_iter", "20"), ("cv_folds", "5"),
+            ("ridge_alpha", "1.0"), ("lasso_alpha", "1.0"), ("pls_components", "2"),
+            ("rf_estimators", "100"), ("svr_C", "1.0"), ("svr_epsilon", "0.1")
         ]
         self.settings_tbl.setRowCount(len(default_settings))
         for i, (k, v) in enumerate(default_settings):
@@ -443,10 +587,17 @@ class QsarModelerWidget(PluginWidget):
         main_layout.addWidget(self.settings_tbl)
 
         # --- 5. Execution & Logs ---
+        exec_layout = QHBoxLayout()
+        self.btn_apply_setup = QPushButton("Apply Setup")
+        self.btn_apply_setup.clicked.connect(self.apply_setup)
+        self.btn_apply_setup.setStyleSheet("font-weight: bold; padding: 8px;")
+        exec_layout.addWidget(self.btn_apply_setup)
+
         self.btn_run = QPushButton("🚀 Train Model")
         self.btn_run.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
         self.btn_run.clicked.connect(self.run_model)
-        main_layout.addWidget(self.btn_run)
+        exec_layout.addWidget(self.btn_run)
+        main_layout.addLayout(exec_layout)
 
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)
@@ -471,27 +622,98 @@ class QsarModelerWidget(PluginWidget):
         if not path: return
 
         try:
-            # Let Pandas auto-detect the delimiter safely
             df = pd.read_csv(path, sep=None, engine='python')
             self.engine.load_dataframe(df)
+            self.engine.df_test = None
 
             clean_name = path.replace("\\", "/").split("/")[-1]
-            self.lbl_file.setText(clean_name)
+            self.lbl_file.setText(f"Train: {clean_name}")
 
-            cols = list(df.columns)
+            cols = list(self.engine.df.columns)
             self.cmb_y.clear()
             self.cmb_y.addItems(cols)
             self.cmb_split.clear()
             self.cmb_split.addItems(["(none)"] + cols)
+
+            self.cmb_smiles_col.clear()
+            self.cmb_smiles_col.addItems(cols)
+            for col in cols:
+                if "smiles" in col.lower():
+                    self.cmb_smiles_col.setCurrentText(col)
+                    break
 
             self.tbl_avail.setRowCount(len(cols))
             for i, c in enumerate(cols):
                 self.tbl_avail.setItem(i, 0, QTableWidgetItem(c))
             self.tbl_sel.setRowCount(0)
 
-            self.txt_log.append(f"Loaded {len(df)} rows and {len(cols)} columns.")
+            self.txt_log.append(f"Loaded Train CSV: {len(self.engine.df)} rows and {len(cols)} columns.")
         except Exception as e:
-            QMessageBox.showerror(self.widget, "Load Error", str(e))
+            QMessageBox.critical(self.widget, "Load Error", str(e))
+
+    def load_test_data(self):
+        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Test Dataset", "", "CSV/TSV Files (*.csv *.tsv *.txt)")
+        if not path: return
+
+        try:
+            df = pd.read_csv(path, sep=None, engine='python')
+            self.engine.load_test_dataframe(df)
+
+            clean_name = path.replace("\\", "/").split("/")[-1]
+            train_name = self.lbl_file.text().split(" | ")[0]
+            self.lbl_file.setText(f"{train_name} | Test: {clean_name}")
+
+            self.txt_log.append(f"Loaded Test CSV: {len(df)} rows.")
+        except Exception as e:
+            QMessageBox.critical(self.widget, "Load Error", str(e))
+
+    def run_inline_split(self):
+        if self.engine.df is None:
+            QMessageBox.warning(self.widget, "Split Error", "Please load a Train CSV dataset first.")
+            return
+
+        algo = self.cmb_split_algo.currentText()
+        smiles = self.cmb_smiles_col.currentText()
+        try:
+            ratio = float(self.txt_train_ratio.currentText())
+        except ValueError:
+            QMessageBox.warning(self.widget, "Split Error", "Invalid Train Ratio. Please enter a float (e.g. 0.8)")
+            return
+
+        if not smiles:
+            QMessageBox.warning(self.widget, "Split Error", "Please select the SMILES column.")
+            return
+
+        y_col = self.cmb_y.currentText()
+        target_col = y_col if y_col else None
+
+        try:
+            split_engine = DataSplitEngine()
+            split_engine.load_dataframe(self.engine.df)
+            res = split_engine.split(
+                algorithm=algo,
+                target_ratio=ratio,
+                smiles_col=smiles,
+                target_col=target_col,
+                desc_mode=DescriptorMode.FINGERPRINTS,
+                n_jobs=1
+            )
+            self.engine.load_dataframe(res.annotated_df)
+
+            cols = list(self.engine.df.columns)
+            self.cmb_split.clear()
+            self.cmb_split.addItems(["(none)"] + cols)
+            self.cmb_split.setCurrentText("Split_Status")
+
+            self.tbl_avail.setRowCount(len(cols))
+            for i, c in enumerate(cols):
+                self.tbl_avail.setItem(i, 0, QTableWidgetItem(c))
+            self.tbl_sel.setRowCount(0)
+
+            self.txt_log.append(f"Inline split succeeded using '{algo}' (Train: {len(res.train_indices)}, Test: {len(res.test_indices)}). Created and selected 'Split_Status' column.")
+            self.apply_setup()
+        except Exception as e:
+            QMessageBox.critical(self.widget, "Split Error", str(e))
 
     def add_descriptors(self):
         for item in self.tbl_avail.selectedItems():
@@ -527,8 +749,8 @@ class QsarModelerWidget(PluginWidget):
             QMessageBox.critical(self.widget, "Setup Error", str(e))
 
     def run_model(self):
+        self.apply_setup()
         if not self.engine.x_cols:
-            QMessageBox.warning(self.widget, "Error", "Apply setup first.")
             return
 
         self.btn_run.setEnabled(False)
@@ -552,11 +774,16 @@ class QsarModelerWidget(PluginWidget):
         self.txt_log.append("\n--- MODEL SUMMARY ---")
         self.txt_log.append(f"Algorithm: {res.model_type}")
         self.txt_log.append(f"Features ({len(res.descriptors)}): {', '.join(res.descriptors)}")
-        self.txt_log.append(f"Train R2: {res.r2_tr:.3f} | Train RMSE: {res.rmse_tr:.3f}")
+        self.txt_log.append(f"Train R2: {res.r2_tr:.3f} | Train RMSE: {res.rmse_tr:.3f} | Train MAE: {res.mae_tr:.3f}")
         self.txt_log.append(f"CV Q2: {res.q2_loo:.3f} | CV RMSE: {res.rmse_cv:.3f}")
 
         if res.metrics_ext:
-            self.txt_log.append(f"Test R2: {res.metrics_ext.get('R2ext'):.3f} | Test RMSE: {res.metrics_ext.get('RMSEext'):.3f}")
+            self.txt_log.append(f"Test R2 (F2): {res.metrics_ext.get('R2ext'):.3f} | Test RMSE: {res.metrics_ext.get('RMSEext'):.3f} | Test MAE: {res.metrics_ext.get('MAEext'):.3f}")
+            self.txt_log.append(f"Test CCC: {res.metrics_ext.get('CCCext'):.3f}")
+            self.txt_log.append(f"Test Q2 (F1): {res.metrics_ext.get('Q2_F1'):.3f} | Test Q2 (F3): {res.metrics_ext.get('Q2_F3'):.3f}")
+            self.txt_log.append(f"Golbraikh-Tropsha k: {res.metrics_ext.get('GT_k'):.3f} | k': {res.metrics_ext.get('GT_k_prime'):.3f} | R2_diff: {res.metrics_ext.get('GT_diff'):.3f}")
+            gt_status = "PASSED" if res.metrics_ext.get('GT_passed') else "FAILED"
+            self.txt_log.append(f"Golbraikh-Tropsha Validation Status: {gt_status}")
 
         if res.model_type == 'XGB' and res.xgb_best_params_:
             self.txt_log.append(f"\nBest XGB Params: {res.xgb_best_params_}")
@@ -580,14 +807,13 @@ class QsarModelerWidget(PluginWidget):
         df_exp = pd.DataFrame({"Subset": "Train", "Observed": y_tr, "Predicted_Fit": self.current_model.yhat_tr, "Predicted_CV": self.current_model.yhat_loo})
 
         if len(self.engine.te_idx) > 0:
-            y_te = self.engine.df.iloc[self.engine.te_idx][self.engine.y_col].values
-            X_te = self.engine.df.iloc[self.engine.te_idx][self.current_model.descriptors].values
-            _, _, X_te_s, _, _ = self.engine._prepare_xy(self.current_model.descriptors)
-
-            if self.current_model.model_type == 'XGB':
-                yhat_te = self.current_model.xgb_model_obj.predict(X_te_s)
+            if self.engine.df_test is not None:
+                y_te = self.engine.df_test.iloc[self.engine.te_idx][self.engine.y_col].values
             else:
-                yhat_te = LinearRegression().fit(self.engine._prepare_xy(self.current_model.descriptors)[0], y_tr).predict(X_te_s)
+                y_te = self.engine.df.iloc[self.engine.te_idx][self.engine.y_col].values
+                
+            _, _, X_te_s, _, _ = self.engine._prepare_xy(self.current_model.descriptors)
+            yhat_te = np.ravel(self.current_model.xgb_model_obj.predict(X_te_s))
 
             df_te = pd.DataFrame({"Subset": "Test", "Observed": y_te, "Predicted_Fit": yhat_te, "Predicted_CV": np.nan})
             df_exp = pd.concat([df_exp, df_te])
@@ -615,8 +841,8 @@ class QsarModelerWidget(PluginWidget):
         plt.savefig(f"{directory}/fit_plot.png", dpi=300)
         plt.close()
 
-        # 2. Williams Plot (If OLS)
-        if res.model_type == 'OLS' and res.hat_diag is not None:
+        # 2. Williams Plot (Applicability Domain)
+        if res.hat_diag is not None:
             plt.figure(figsize=(6, 5))
             plt.scatter(res.hat_diag, res.std_resid_fit, alpha=0.7, edgecolors='k')
             plt.axhline(3, color='r', linestyle='--'); plt.axhline(-3, color='r', linestyle='--')
@@ -624,7 +850,7 @@ class QsarModelerWidget(PluginWidget):
             plt.axvline(h_star, color='r', linestyle='--')
             plt.xlabel("Leverage (h)")
             plt.ylabel("Standardized Residuals")
-            plt.title("Williams Plot")
+            plt.title(f"Williams Plot ({res.model_type})")
             plt.savefig(f"{directory}/williams_plot.png", dpi=300)
             plt.close()
 
