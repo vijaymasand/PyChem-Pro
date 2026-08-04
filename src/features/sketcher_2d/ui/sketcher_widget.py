@@ -134,6 +134,21 @@ class SketcherWidget(QWidget):
         self.action_charge_minus.setCheckable(True)
         self._add_tool_action(self.action_charge_minus)
 
+        self.action_lone_pair = QAction("Lone Pair", self)
+        self.action_lone_pair.setToolTip("Click an atom to add/remove lone pairs")
+        self.action_lone_pair.setCheckable(True)
+        self._add_tool_action(self.action_lone_pair)
+
+        self.action_radical_plus = QAction("Radical +", self)
+        self.action_radical_plus.setToolTip("Click an atom to toggle radical cation (dot with plus)")
+        self.action_radical_plus.setCheckable(True)
+        self._add_tool_action(self.action_radical_plus)
+
+        self.action_radical_minus = QAction("Radical −", self)
+        self.action_radical_minus.setToolTip("Click an atom to toggle radical anion (dot with minus)")
+        self.action_radical_minus.setCheckable(True)
+        self._add_tool_action(self.action_radical_minus)
+
         self.toolbar.addSeparator()
 
         # Rings
@@ -381,7 +396,8 @@ class SketcherWidget(QWidget):
         self.view.centerOn(0, 0)
         
         from ..tools import (TemplateTool, ArrowTool, SelectTool, TextTool,
-                             RotateTool, ChargeTool)
+                             RotateTool, ChargeTool, LonePairTool, RadicalPlusTool,
+                             RadicalMinusTool)
         self.tools = {
             "bond": StructureTool(),
             "eraser": EraserTool(),
@@ -390,6 +406,9 @@ class SketcherWidget(QWidget):
             "rotate": RotateTool(),
             "charge_plus": ChargeTool(1),
             "charge_minus": ChargeTool(-1),
+            "lone_pair": LonePairTool(),
+            "radical_plus": RadicalPlusTool(),
+            "radical_minus": RadicalMinusTool(),
             "arrow": ArrowTool("reaction", curvature=0.0),
             "equilibrium": ArrowTool("equilibrium", curvature=0.0),
             "reversible": ArrowTool("reversible", curvature=0.0),
@@ -654,6 +673,12 @@ class SketcherWidget(QWidget):
             self.current_tool = self.tools["charge_plus"]
         elif action == self.action_charge_minus:
             self.current_tool = self.tools["charge_minus"]
+        elif action == self.action_lone_pair:
+            self.current_tool = self.tools["lone_pair"]
+        elif action == self.action_radical_plus:
+            self.current_tool = self.tools["radical_plus"]
+        elif action == self.action_radical_minus:
+            self.current_tool = self.tools["radical_minus"]
         elif action == self.action_ring:
             self.current_tool = self.tools[self.ring_combo.currentText()]
         elif action == self.action_arrow:
