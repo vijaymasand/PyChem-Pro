@@ -19,7 +19,7 @@ class Atom(OasaAtom, DrawableObject):
     focus_priority = 6
     redraw_priority = 2
     is_toplevel = False
-    meta__undo_properties = ("symbol", "x", "y", "z", "charge", "isotope", "explicit_hydrogens", "show_symbol", "auto_hydrogens", "molecule", "color")
+    meta__undo_properties = ("symbol", "x", "y", "z", "charge", "isotope", "explicit_hydrogens", "show_symbol", "auto_hydrogens", "molecule", "color", "lonepairs", "radical_plus", "radical_minus")
     meta__undo_copy = ("properties_",)
     meta__undo_children_to_record = []
     meta__scalables = ("x", "y", "z")
@@ -39,6 +39,8 @@ class Atom(OasaAtom, DrawableObject):
         self.lonepairs = 0
         self.lonepair_type = 'dots'
         self.radical = 0
+        self.radical_plus = 0
+        self.radical_minus = 0
         self.hydrogens = 0
         self.auto_hydrogens = True
         self.show_symbol = symbol != 'C'
@@ -46,6 +48,7 @@ class Atom(OasaAtom, DrawableObject):
         self._hydrogens_text = ""
         self.hydrogen_pos = None
         self.marks_pos = []
+        self.mark_types = []
         self._text = None
         self.text_layout = "Auto"
         self._alignment = None
@@ -251,16 +254,36 @@ class Atom(OasaAtom, DrawableObject):
         self._decide_marks_pos()
         ax, ay, scale = self.x, self.y, self.molecule.scale_val
         abs_pos = [(ax + dx * scale, ay + dy * scale) for dx, dy in self.marks_pos]
-        pos_i = 0
-        if self.charge:
+        font = Font(self.font_name, 0.75 * self.font_size * self.molecule.scale_val)
+        
+        for pos_i, (mark_type, val, angle) in enumerate(self.mark_types):
             x, y = abs_pos[pos_i]
-            text = self.charge > 0 and "+" or "−"
-            count = abs(self.charge) > 1 and ("%i" % abs(self.charge)) or ""
-            text = count + text
-            font = Font(self.font_name, 0.75 * self.font_size * self.molecule.scale_val)
-            item = self.paper.addHtmlText(text, (x, y), font=font, align=Align.HCenter | Align.VCenter, color=self.color)
-            self._mark_items.append(item)
-            pos_i += 1
+            if mark_type == "charge":
+                text = val > 0 and "+" or "−"
+                count = abs(val) > 1 and ("%i" % abs(val)) or ""
+                text = count + text
+                item = self.paper.addHtmlText(text, (x, y), font=font, align=Align.HCenter | Align.VCenter, color=self.color)
+                self._mark_items.append(item)
+            elif mark_type == "lonepair":
+                dot_dist = 4.0 * scale
+                dot_r = 1.0 * scale
+                px = -sin(angle) * dot_dist / 2
+                py = cos(angle) * dot_dist / 2
+                x1, y1 = x + px, y + py
+                rect1 = [x1 - dot_r, y1 - dot_r, x1 + dot_r, y1 + dot_r]
+                item1 = self.paper.addEllipse(rect1, color=self.color, fill=self.color)
+                x2, y2 = x - px, y - py
+                rect2 = [x2 - dot_r, y2 - dot_r, x2 + dot_r, y2 + dot_r]
+                item2 = self.paper.addEllipse(rect2, color=self.color, fill=self.color)
+                self._mark_items.extend([item1, item2])
+            elif mark_type == "radical_plus":
+                text = "•<sup>+</sup>"
+                item = self.paper.addHtmlText(text, (x, y), font=font, align=Align.HCenter | Align.VCenter, color=self.color)
+                self._mark_items.append(item)
+            elif mark_type == "radical_minus":
+                text = "•<sup>−</sup>"
+                item = self.paper.addHtmlText(text, (x, y), font=font, align=Align.HCenter | Align.VCenter, color=self.color)
+                self._mark_items.append(item)
 
     def bounding_box(self):
         if self._main_items and self.paper:
@@ -432,23 +455,56 @@ class Atom(OasaAtom, DrawableObject):
         self.hydrogen_pos = int(round(angle * 2 / PI)) % 4
 
     def _decide_marks_pos(self):
-        count = int(self.charge != 0)
-        if count == 0: return
-        mark_dist = self.font_size * 3 / 8
         self.marks_pos.clear()
-        if len(self.neighbor_edges) == 1:
-            angle = self.neighbors[0].y < self.y - 1 and PI / 2 or 3 * PI / 2
+        self.mark_types.clear()
+        
+        active_marks = []
+        if self.charge != 0:
+            active_marks.append(("charge", self.charge))
+        if getattr(self, "lonepairs", 0) > 0:
+            for _ in range(self.lonepairs):
+                active_marks.append(("lonepair", None))
+        if getattr(self, "radical_plus", 0):
+            active_marks.append(("radical_plus", None))
+        if getattr(self, "radical_minus", 0):
+            active_marks.append(("radical_minus", None))
+            
+        if not active_marks:
+            return
+            
+        gaps = []
+        if not self.neighbors:
+            gaps = [
+                (2 * PI, 3 * PI / 2),
+                (2 * PI, 0.0),
+                (2 * PI, PI),
+                (2 * PI, PI / 2)
+            ]
         else:
             angles = [(a.x, a.y) for a in self.neighbors]
             angles = [geo.line_get_angle_from_east([self.x, self.y, x, y]) for x, y in angles]
-            if not angles: angles = [3 * PI / 2]
             angles.append(2 * PI + min(angles))
             angles.sort(reverse=True)
-            diffs = list_difference(angles)
-            i = diffs.index(max(diffs))
-            angle = (angles[i] + angles[i + 1]) / 2
-        pos = (self.x + cos(angle) * 10, self.y + sin(angle) * 10)
-        self.marks_pos.append((pos[0] - self.x, pos[1] - self.y))
+            for i in range(len(angles) - 1):
+                gap_size = angles[i] - angles[i+1]
+                bisector = (angles[i] + angles[i+1]) / 2
+                gaps.append((gap_size, bisector))
+            gaps.sort(key=lambda x: x[0], reverse=True)
+            
+        for idx, mark in enumerate(active_marks):
+            if idx < len(gaps):
+                angle = gaps[idx][1]
+            else:
+                angle = gaps[0][1] + (idx - len(gaps) + 1) * (PI / 6)
+            
+            dist = 11
+            if self.visible and self.symbol != 'C':
+                dist = 13
+                
+            dx = cos(angle) * dist
+            dy = sin(angle) * dist
+            self.marks_pos.append((dx, dy))
+            self.mark_types.append((mark[0], mark[1], angle))
 
     def transform(self, tr):
         self.x, self.y = tr.transform(self.x, self.y)
