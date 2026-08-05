@@ -23,6 +23,54 @@ element_shortcuts = {
     'f': 'F', 'l': 'Cl', 'b': 'Br', 'i': 'I', 'h': 'H',
 }
 
+def handle_atom_keypress(key, text):
+    focused = App.paper.focused_obj
+    if isinstance(focused, Atom):
+        import time
+        current_time = time.time()
+        
+        # Check for Enter or Return to edit the label via dialog
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if App.window and hasattr(App.window, '_menu_edit_label'):
+                App.window._menu_edit_label(focused)
+                return True
+        
+        last_atom = getattr(App, 'last_typed_atom', None)
+        last_time = getattr(App, 'last_type_time', 0)
+        buffer = getattr(App, 'typing_buffer', "")
+        
+        if key == Qt.Key.Key_Backspace:
+            if last_atom is focused and (current_time - last_time) < 1.5 and len(buffer) > 0:
+                buffer = buffer[:-1]
+                if not buffer:
+                    buffer = "C" # Default to Carbon if completely backspaced
+                App.typing_buffer = buffer
+                App.last_type_time = current_time
+                focused.set_symbol(buffer)
+                focused.draw()
+                App.paper.save_state_to_undo_stack()
+                return True
+        
+        char = text
+        if char and (char.isalnum() or char in ('+', '-')):
+            mapped_char = element_shortcuts.get(char.lower(), char)
+            
+            if last_atom is focused and (current_time - last_time) < 1.5:
+                buffer += mapped_char
+            else:
+                buffer = mapped_char
+            
+            App.last_typed_atom = focused
+            App.last_type_time = current_time
+            App.typing_buffer = buffer
+            
+            focused.set_symbol(buffer)
+            focused.draw()
+            App.paper.save_state_to_undo_stack()
+            App.paper.locked_focus_obj = None
+            return True
+    return False
+
 # ring templates : name -> (size, {index: symbol}, aromatic, indices that never
 # carry a double bond). Index 0 is the "first" vertex of the ring.
 ring_templates = {
@@ -251,16 +299,7 @@ class StructureTool(Tool):
         self.atom_with_preview_bond = atom
 
     def on_key_press(self, key, text):
-        focused = App.paper.focused_obj
-        if isinstance(focused, Atom):
-            symbol = element_shortcuts.get(text.lower())
-            if symbol:
-                focused.set_symbol(symbol)
-                focused.draw()
-                App.paper.save_state_to_undo_stack()
-                App.paper.locked_focus_obj = None
-                return True
-        return False
+        return handle_atom_keypress(key, text)
 
     def clear_preview(self):
         if self.preview_item:
@@ -803,6 +842,10 @@ class SelectTool(Tool):
 
     def on_mouse_double_click(self, x, y):
         focused = App.paper.focused_obj
+        if isinstance(focused, Atom):
+            if App.window and hasattr(App.window, '_menu_edit_label'):
+                App.window._menu_edit_label(focused)
+                return
         if focused:
             # Double click selects the whole molecule or parent object
             if hasattr(focused, 'molecule') and focused.molecule:
@@ -1114,16 +1157,10 @@ class SelectTool(Tool):
         self.changed = False
 
     def on_key_press(self, key, text):
+        if handle_atom_keypress(key, text):
+            return True
         focused = App.paper.focused_obj
-        if isinstance(focused, Atom):
-            symbol = element_shortcuts.get(text.lower())
-            if symbol:
-                focused.set_symbol(symbol)
-                focused.draw()
-                App.paper.save_state_to_undo_stack()
-                App.paper.locked_focus_obj = None
-                return True
-        elif isinstance(focused, Arrow):
+        if isinstance(focused, Arrow):
             if text in ('+', '='):
                 focused.curvature += 0.2
                 focused.draw()

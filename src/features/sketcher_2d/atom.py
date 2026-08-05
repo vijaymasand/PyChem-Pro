@@ -237,6 +237,7 @@ class Atom(OasaAtom, DrawableObject):
         self._focusable_item = self.paper.addRect(focusable_rect, color=Color.transparent)
 
     def _draw_functional_group(self):
+        self.visible = True
         font = Font(self.font_name, self.font_size * self.molecule.scale_val)
         if self._alignment == None: self._update_alignment()
         if self._text == None: self._update_text()
