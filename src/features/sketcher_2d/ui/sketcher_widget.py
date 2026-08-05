@@ -23,6 +23,7 @@ class SketcherWidget(QWidget):
         super().__init__(parent)
         self._init_ui()
         App.paper = self.paper # Shared App object
+        App.window = self      # Store reference to main widget
 
     def _add_tool_action(self, action, shortcut=None):
         """ registers a checkable tool action on the toolbar and its shortcut """
@@ -90,6 +91,23 @@ class SketcherWidget(QWidget):
         self.action_text.setToolTip("Add text (T)")
         self.action_text.setCheckable(True)
         self._add_tool_action(self.action_text, "T")
+
+        # Subscript & Superscript Formatting Actions
+        self.action_subscript = QAction("Subscript", self)
+        self.action_subscript.setToolTip("Subscript selected text in text box")
+        self.action_subscript.triggered.connect(self._on_subscript_clicked)
+        self.toolbar.addAction(self.action_subscript)
+        sub_btn = self.toolbar.widgetForAction(self.action_subscript)
+        if sub_btn:
+            sub_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+        self.action_superscript = QAction("Superscript", self)
+        self.action_superscript.setToolTip("Superscript selected text in text box")
+        self.action_superscript.triggered.connect(self._on_superscript_clicked)
+        self.toolbar.addAction(self.action_superscript)
+        sup_btn = self.toolbar.widgetForAction(self.action_superscript)
+        if sup_btn:
+            sup_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         self.action_rotate = QAction("Rotate", self)
         self.action_rotate.setToolTip("Rotate molecule (R)")
@@ -569,6 +587,50 @@ class SketcherWidget(QWidget):
         # ChemDraw style: after text is finished, switch back to select tool
         if isinstance(self.current_tool, TextTool):
             self._activate_select_tool()
+
+    def _on_subscript_clicked(self):
+        self._apply_text_format("sub")
+
+    def _on_superscript_clicked(self):
+        self._apply_text_format("sup")
+
+    def _apply_text_format(self, format_type):
+        focused = self.paper.focused_obj
+        if not focused:
+            focused = getattr(self.paper, 'locked_focus_obj', None)
+        
+        from ..text_label import TextLabel
+        if isinstance(focused, TextLabel) and focused._text_item:
+            text_item = focused._text_item
+            cursor = text_item.textCursor()
+            if cursor.hasSelection():
+                from src.shared.qt_compat import QTextCharFormat
+                char_format = QTextCharFormat()
+                
+                # Check for Qt6 style enum first, then fallback to Qt5
+                if hasattr(QTextCharFormat, 'VerticalAlignment'):
+                    align_sub = QTextCharFormat.VerticalAlignment.AlignSubScript
+                    align_super = QTextCharFormat.VerticalAlignment.AlignSuperScript
+                    align_normal = QTextCharFormat.VerticalAlignment.AlignNormal
+                else:
+                    align_sub = QTextCharFormat.AlignSubScript
+                    align_super = QTextCharFormat.AlignSuperScript
+                    align_normal = QTextCharFormat.AlignNormal
+                
+                current_align = cursor.charFormat().verticalAlignment()
+                target_align = align_sub if format_type == "sub" else align_super
+                
+                if current_align == target_align:
+                    char_format.setVerticalAlignment(align_normal)
+                else:
+                    char_format.setVerticalAlignment(target_align)
+                
+                cursor.mergeCharFormat(char_format)
+                text_item.setTextCursor(cursor)
+                
+                # Save the updated rich HTML text back to the focused object
+                focused.text = text_item.toHtml()
+                text_item.setFocus()
 
     def wheelEvent(self, event):
         angle = event.angleDelta().y()
