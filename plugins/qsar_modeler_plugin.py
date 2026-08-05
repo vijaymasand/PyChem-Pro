@@ -105,6 +105,33 @@ def standardize_residuals(residuals: np.ndarray) -> np.ndarray:
     s = np.std(residuals, ddof=1) if len(residuals) > 1 else 1.0
     return residuals / s if s != 0 else np.zeros_like(residuals)
 
+def parse_list_string(s):
+    if not isinstance(s, str):
+        return s
+    s = s.strip()
+    if s.startswith('[') and s.endswith(']'):
+        content = s[1:-1].strip()
+        if not content:
+            return []
+        parts = content.split(',')
+        result = []
+        for p in parts:
+            p = p.strip()
+            if not p:
+                continue
+            if (p.startswith("'") and p.endswith("'")) or (p.startswith('"') and p.endswith('"')):
+                result.append(p[1:-1])
+            else:
+                try:
+                    if '.' in p or 'e' in p.lower():
+                        result.append(float(p))
+                    else:
+                        result.append(int(p))
+                except ValueError:
+                    result.append(p)
+        return result
+    return s
+
 def expand_sequence_columns(df: pd.DataFrame) -> pd.DataFrame:
     new_cols = {}
     cols_to_drop = []
@@ -115,10 +142,9 @@ def expand_sequence_columns(df: pd.DataFrame) -> pd.DataFrame:
         
         if isinstance(first_val, str) and first_val.startswith('[') and first_val.endswith(']'):
             try:
-                import ast
-                parsed = ast.literal_eval(first_val)
+                parsed = parse_list_string(first_val)
                 if isinstance(parsed, (list, tuple)):
-                    df[col] = df[col].apply(lambda val: ast.literal_eval(val) if isinstance(val, str) else val)
+                    df[col] = df[col].apply(lambda val: parse_list_string(val) if isinstance(val, str) else val)
                     first_val = parsed
             except:
                 pass
@@ -500,6 +526,7 @@ class QsarModelerWidget(PluginWidget):
 
         setup_layout.addWidget(QLabel("Split Algo:"))
         from src.features.data_splitting.split_engine import DataSplitEngine
+        self.cmb_split_algo = QComboBox()
         self.cmb_split_algo.addItems(DataSplitEngine.available_algorithms())
         setup_layout.addWidget(self.cmb_split_algo)
 
@@ -586,18 +613,18 @@ class QsarModelerWidget(PluginWidget):
             self.settings_tbl.setItem(i, 1, QTableWidgetItem(v))
         main_layout.addWidget(self.settings_tbl)
 
-        # --- 5. Execution & Logs ---
-        exec_layout = QHBoxLayout()
+        # --- 5. Run & Logs ---
+        run_layout = QHBoxLayout()
         self.btn_apply_setup = QPushButton("Apply Setup")
         self.btn_apply_setup.clicked.connect(self.apply_setup)
         self.btn_apply_setup.setStyleSheet("font-weight: bold; padding: 8px;")
-        exec_layout.addWidget(self.btn_apply_setup)
+        run_layout.addWidget(self.btn_apply_setup)
 
         self.btn_run = QPushButton("🚀 Train Model")
         self.btn_run.setStyleSheet("background-color: #2980b9; color: white; font-weight: bold; padding: 8px;")
         self.btn_run.clicked.connect(self.run_model)
-        exec_layout.addWidget(self.btn_run)
-        main_layout.addLayout(exec_layout)
+        run_layout.addWidget(self.btn_run)
+        main_layout.addLayout(run_layout)
 
         self.txt_log = QTextEdit()
         self.txt_log.setReadOnly(True)

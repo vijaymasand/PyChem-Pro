@@ -1,9 +1,78 @@
 # -*- coding: utf-8 -*-
+import re
 from .drawing_parents import DrawableObject, Color, Font, Align
 from src.shared.qt_compat import QGraphicsTextItem, QFont, QColor, QGraphicsItem
 
 global text_id_no
 text_id_no = 1
+
+def format_text_to_html(text):
+    if not text:
+        return ""
+    
+    # 1. Replace explicit LaTeX/markdown-style markup
+    # Superscripts: ^{...}, ^(...) or ^c (single character/digit/sign)
+    text = re.sub(r'\^\{([^}]+)\}', r'<sup>\1</sup>', text)
+    text = re.sub(r'\^\(([^)]+)\)', r'<sup>\1</sup>', text)
+    text = re.sub(r'\^([a-zA-Z0-9+\-])', r'<sup>\1</sup>', text)
+    
+    # Subscripts: _{...}, _(...) or _c (single character/digit/sign)
+    text = re.sub(r'\_\{([^}]+)\}', r'<sub>\1</sub>', text)
+    text = re.sub(r'\_\(([^)]+)\)', r'<sub>\1</sub>', text)
+    text = re.sub(r'\_([a-zA-Z0-9+\-])', r'<sub>\1</sub>', text)
+    
+    # 2. Split by HTML tags to avoid formatting content inside tags
+    parts = re.split(r'(<[^>]+>)', text)
+    
+    for i in range(len(parts)):
+        # Even indices are plain text, odd indices are HTML tags
+        if i % 2 == 0 and parts[i]:
+            # Split by whitespace to process word by word
+            tokens = re.split(r'(\s+)', parts[i])
+            for j in range(len(tokens)):
+                token = tokens[j]
+                if not token or token.isspace():
+                    continue
+                
+                # Strip trailing punctuation for chemical formula check
+                match = re.match(r'^(.*?)([\.,;:!\?]*)$', token)
+                if match:
+                    clean_word, suffix = match.groups()
+                else:
+                    clean_word, suffix = token, ""
+                
+                # Format the clean word
+                formatted_word = clean_word
+                
+                # Rule A: Hybridization (e.g. sp3, dsp2, sp3d2)
+                # Word consists only of lowercase s, p, d, f and digits, has at least one of s,p,d,f, and has at least one digit
+                if re.match(r'^[spdf\d]+$', clean_word) and any(c in 'spdf' for c in clean_word) and any(c.isdigit() for c in clean_word):
+                    formatted_word = re.sub(r'(\d+)', r'<sup>\1</sup>', clean_word)
+                else:
+                    # Rule B: Check for charge at the end (e.g. NH4+, SO42-, Ca2+, H+)
+                    # Requires at least one chemical formula character before the charge (non-greedy, max 1 digit for charge magnitude)
+                    charge_match = re.match(r'^([a-zA-Z0-9()\[\]\-\*·.]+?)(\d?[+-])$', clean_word)
+                    if charge_match:
+                        base, charge = charge_match.groups()
+                        charge_html = f"<sup>{charge}</sup>"
+                    else:
+                        base = clean_word
+                        charge_html = ""
+                    
+                    # Rule C: Isotopes (e.g. 13C, 14N)
+                    # Leading digits followed by an uppercase letter
+                    base = re.sub(r'^(\d+)([A-Z][a-z]?)', r'<sup>\1</sup>\2', base)
+                    
+                    # Rule D: Subscript digits preceded by a letter, ), or ]
+                    base = re.sub(r'([a-zA-Z)\]])(\d+)', r'\1<sub>\2</sub>', base)
+                    
+                    formatted_word = base + charge_html
+                
+                tokens[j] = formatted_word + suffix
+            
+            parts[i] = "".join(tokens)
+            
+    return "".join(parts)
 
 class TextLabel(DrawableObject):
     meta__undo_properties = ("x", "y", "text", "font_name", "font_size", "color")
@@ -35,7 +104,8 @@ class TextLabel(DrawableObject):
         
         font = Font(self.font_name, self.font_size)
         
-        self._text_item = self.paper.addHtmlText(self.text, (self.x, self.y), font=font, 
+        html_text = format_text_to_html(self.text)
+        self._text_item = self.paper.addHtmlText(html_text, (self.x, self.y), font=font, 
                                                  align=Align.HCenter | Align.VCenter, color=self.color)
         if hasattr(self._text_item, 'setFlag'):
             self._text_item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsFocusable, True)
@@ -88,10 +158,13 @@ class TextLabel(DrawableObject):
             if hasattr(self._text_item, 'setTextInteractionFlags'):
                 self._text_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
                 self._text_item.clearFocus()
-                new_text = self._text_item.toPlainText()
-                if new_text != self.text:
-                    self.text = new_text
-                    self.draw()
+                if not self._text_item.toPlainText().strip():
+                    self.text = ""
+                else:
+                    new_text = self._text_item.toHtml()
+                    if new_text != self.text:
+                        self.text = new_text
+                self.draw()  # Always redraw to restore HTML rendering!
                 if self.paper:
                     # the widget drops labels that were left empty
                     self.paper.text_editing_finished.emit()
