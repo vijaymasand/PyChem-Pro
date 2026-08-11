@@ -138,6 +138,12 @@ class PluginSandbox:
             if not re.search(r'\bfile\s*\(', content):
                 return True
                 
+        # Allow 'input' when used in variable names, labels, or comments, and not as a function call
+        if restricted_func == 'input':
+            import re
+            if not re.search(r'\binput\s*\(', content):
+                return True
+                
         # For other restricted functions, be strict
         return False
     
