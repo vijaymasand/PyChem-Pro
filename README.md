@@ -15,7 +15,7 @@
 
 **Financial support/Sponsorship**
 🎉 Another PyChem-Pro Milestone Update!
-I am incredibly proud to share that PyChem-Pro has received another official financial support from Mr. Dushyanth Reddy Vennapu, Ph.D. Scholar, Central University of Punjab. *Thank you for your generous support!*
+I am incredibly proud to share that PyChem-Pro has received another official financial support from Mr. Dushyanth Reddy Vennapu, Ph.D. Scholar, Central University of Punjab. *Thank you for your generous support!* 
 
 ---
 
@@ -23,6 +23,7 @@ I am incredibly proud to share that PyChem-Pro has received another official fin
 
 - [About PyChem-Pro](#about-pychem-pro)
 - [Key Features](#key-features)
+- [Architecture Overview](#architecture-overview)
 - [Tech Stack](#tech-stack)
 - [System Requirements](#system-requirements)
 - [Installation](#installation)
@@ -102,7 +103,6 @@ This makes PyChem-Pro:
 - QSAR modeling, Ramachandran, descriptor pruning, docking pose visualization (featuring 3D distance-based bond order perception and robust aromatic Kekulization), molecular weight calculator — all shipped as plugins
 
 ---
-## Rendering Pipeline
 
 **Dependency rules (enforced by convention):**
 
@@ -372,6 +372,85 @@ pychem.rmsd(mol_a, mol_b, *, method='auto', selection='auto',
 
 ---
 
+## Project Structure
+
+```
+PyChem/
+├── pychem/                        # Public API (no Qt dependency)
+│   ├── __init__.py                #   import pychem
+│   ├── api.py                     #   public facade functions
+│   └── _bridge.py                 #   ServiceRegistry singleton
+│
+├── src/
+│   ├── core/                      # Infrastructure and core domain
+│   │   ├── domain/models/         # Molecule, Atom, Bond, Element
+│   │   ├── protocols/             # IForceField, IRenderer, ILoader, ...
+│   │   ├── events.py              # EventBus + event dataclasses
+│   │   ├── parallel.py            # ParallelExecutor (50% CPU cores)
+│   │   ├── registry.py            # ServiceRegistry
+│   │   ├── performance/           # Profiler, parallel loader
+│   │   └── security/              # License manager
+│   │
+│   ├── services/                  # Service implementations
+│   │   ├── forcefield/            # MMFF94Service, HydrogenAdder,
+│   │   │                          # AngleBending, Torsion, parameters
+│   │   ├── rendering/             # RendererFactory, parallel_projection
+│   │   ├── loading/               # LoaderService
+│   │   ├── coordinates/           # CoordinateGeneratorService
+│   │   └── descriptors/           # DescriptorService
+│   │
+│   ├── app/                       # GUI application (thin shell)
+│   │   ├── main_window.py         # QMainWindow wiring
+│   │   ├── menu_bar.py            # Menu construction
+│   │   ├── toolbar.py             # Toolbar construction
+│   │   ├── file_operations.py     # Open / Save / Export / Print
+│   │   ├── chemistry_actions.py   # Optimize / Charges / Descriptors
+│   │   ├── viewer_coordinator.py  # View toggles, COM/centroid spheres
+│   │   ├── molecule_controller.py # Signal wiring, undo/redo, selection
+│   │   ├── conversion_worker.py   # QThread SMILES->3D worker
+│   │   ├── plugin_interface.py    # Plugin browser UI
+│   │   ├── plugin_card.py
+│   │   └── plugin_installer.py
+│   │
+│   ├── features/                  # Feature modules (split by domain)
+│   │   ├── visualization_3d/      # MolViewer3D + painter_renderer +
+│   │   │                          # mouse_controller + protein_rendering
+│   │   ├── visualization_2d/      # MolViewer2D + bond/atom renderers
+│   │   ├── cheminformatics/       # AM1, PM3, Gasteiger, MMFF94 legacy
+│   │   ├── layout_3d/             # 3D coordinate generator
+│   │   ├── layout_2d/             # 2D layout generators
+│   │   ├── smiles_parser/         # OpenSMILES parser
+│   │   ├── smiles_generator/      # SMILES writer
+│   │   ├── io/                    # File readers/writers
+│   │   ├── descriptor_calculator/ # Descriptor GUI and engines
+│   │   ├── data_splitting/        # QSAR dataset partitioning and UI
+│   │   ├── scripting_console/     # Python REPL + atom selection
+│   │   ├── control_panel/         # Input panel
+│   │   └── ui/                    # Dialogs (colors, spheres, etc.)
+│   │
+│   ├── plugins/                   # Plugin manager infrastructure
+│   ├── shared/                    # Qt compat, theme
+│   └── vendors/oasa/              # Vendored OASA library (frozen)
+│
+├── plugins/                       # Built-in and user plugins
+│   ├── docking_pose_visualizer.py
+│   ├── ramachandran_plugin.py
+│   ├── qsar_modeler_plugin.py
+│   ├── mol_weight_calculator.py
+│   └── ...
+│
+├── tests/                         # Unit tests
+├── testing/                       # Development / debugging scripts
+├── docs/                          # Architecture specs, user guides
+│   └── superpowers/
+│       ├── specs/                 # Design documents
+│       └── plans/                 # Implementation plans
+├── main.py                        # Application entry point
+├── build.py                       # Nuitka bundler script
+├── requirements.txt
+└── README.md                      # You are here
+```
+
 ---
 
 ## Services Layer (Public Protocols)
@@ -454,6 +533,34 @@ src/services/forcefield/
 ├── torsion.py              # TorsionCalculator
 └── parameters.py           # Consolidated bond/angle/torsion/VdW/BCI tables
 ```
+
+---
+
+## Rendering Pipeline
+
+The 3D viewer (`src/features/visualization_3d/ui/mol_viewer_3d.py`) paints directly via QPainter. Rendering logic is extracted into `painter_renderer.py` (the engine) and `mouse_controller.py` (interaction).
+
+### Optimizations
+
+- **Gradient cache.** `QRadialGradient` color stops are cached by `(element, radius_bucket, is_hovered, use_ssao, depth_bucket)`. Rebuilding a positioned gradient from cached stops is free; the expensive color arithmetic runs once per unique atom type.
+- **Off-screen culling.** Atoms and bonds outside the viewport plus a 50-100 pixel margin are skipped before any draw call.
+- **LOD (Level of Detail).** Atoms projected to less than 2 px radius are drawn as plain filled circles instead of gradient spheres.
+- **Parallel pre-render.** For large molecules, projection, depth sort, and visibility culling can be split across `ParallelExecutor` workers (in `src/services/rendering/parallel_projection.py`). Draw calls themselves remain on the main thread per Qt's threading model.
+
+### Protein cartoon rendering
+
+`src/features/visualization_3d/services/protein_rendering.py` implements:
+
+- Simplified DSSP-style secondary structure detection (~85% accuracy on standard tests)
+- Catmull-Rom spline smoothing for ribbon paths
+- PyMOL-style cartoon tubes for helices, flat ribbons with arrow heads for sheets, thin coils for loops
+- Color schemes: secondary structure, rainbow, by chain, by B-factor
+
+![Protein Visualization](assets/Protein-Visual.png)
+
+*Ramachandran plot analysis for validation of protein backbones:*
+
+![Ramachandran Plot](assets/ramachandran_plot.png)
 
 ---
 
