@@ -29,9 +29,9 @@ class PluginSandbox:
         # Restricted modules that plugins cannot import
         self._restricted_modules = {
             'os.system', 'subprocess', 'shutil',
-            'socket', 'urllib.request', 'http.client',
+            'socket', 'urllib', 'http',
             'ftplib', 'smtplib', 'telnetlib', 'pickle',
-            'marshal', 'code', 'compile', 'eval', 'exec'
+            'marshal'
         }
         
         # Restricted built-in functions
@@ -77,20 +77,49 @@ class PluginSandbox:
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # Check for restricted imports
-            for restricted in self._restricted_modules:
-                if restricted in content:
-                    return False, f"Restricted module found: {restricted}"
-            
-            # Check for restricted built-ins
-            for restricted in self._restricted_builtins:
-                if restricted in content and not self._is_safe_usage(content, restricted):
-                    return False, f"Restricted function found: {restricted}"
+            # AST analysis for precise checking
+            import ast
+            try:
+                tree = ast.parse(content, filename=str(path))
+                
+                # Inspect nodes for restricted imports and calls
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            for restricted in self._restricted_modules:
+                                if alias.name == restricted or alias.name.startswith(restricted + '.'):
+                                    return False, f"Restricted module found: {restricted}"
+                    elif isinstance(node, ast.ImportFrom):
+                        mod = node.module or ''
+                        for restricted in self._restricted_modules:
+                            if mod == restricted or mod.startswith(restricted + '.'):
+                                return False, f"Restricted module found: {restricted}"
+                    elif isinstance(node, ast.Attribute):
+                        if node.attr == 'system' and isinstance(node.value, ast.Name) and node.value.id == 'os':
+                            return False, f"Restricted module found: os.system"
+                    elif isinstance(node, ast.Call):
+                        if isinstance(node.func, ast.Name):
+                            func_name = node.func.id
+                            if func_name in self._restricted_builtins:
+                                if not self._is_safe_usage(content, func_name):
+                                    return False, f"Restricted function found: {func_name}"
+            except SyntaxError:
+                # Fallback to regex word boundary matching if AST parsing fails
+                import re
+                for restricted in self._restricted_modules:
+                    pattern = r'\bimport\s+' + re.escape(restricted) + r'\b|\bfrom\s+' + re.escape(restricted) + r'\b'
+                    if re.search(pattern, content):
+                        return False, f"Restricted module found: {restricted}"
+                
+                for restricted in self._restricted_builtins:
+                    pattern = r'\b' + re.escape(restricted) + r'\s*\('
+                    if re.search(pattern, content) and not self._is_safe_usage(content, restricted):
+                        return False, f"Restricted function found: {restricted}"
             
             return True, "Plugin file is safe"
             
         except Exception as e:
-            return False, f"Error from .validation import PluginCodeValidator: {e}"
+            return False, f"Error validating plugin file: {e}"
     
     def _is_safe_usage(self, content: str, restricted_func: str) -> bool:
         """

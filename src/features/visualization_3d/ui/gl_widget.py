@@ -407,8 +407,9 @@ zoom : float
             # traceback.print_exc()
             pass
             
-        # Draw 2D overlays (Selection rings, interactions, labels) using QPainter over the GL surface
-        if (self.selected_atoms or self.interaction_lines or self.labels or self.labeled_residues) and self._positions is not None:
+        # Draw 2D overlays (Selection rings, interactions, labels, dummy spheres) using QPainter over the GL surface
+        has_dummy_spheres = hasattr(self.molecule, 'dummy_spheres') and bool(self.molecule.dummy_spheres)
+        if (self.selected_atoms or self.interaction_lines or self.labels or self.labeled_residues or has_dummy_spheres) and (self._positions is not None or has_dummy_spheres):
             painter = QPainter(self)
             try:
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -438,8 +439,12 @@ zoom : float
                     view_pos = view.map(vec3)
                     return sx, sy, view_pos.z()
 
+                # Draw Dummy Spheres (COM, Centroid, Custom)
+                if has_dummy_spheres:
+                    self._draw_dummy_spheres_gl(painter, w, h, proj, view, mvp)
+
                 # Draw Interaction Lines
-                if self.interaction_lines:
+                if self.interaction_lines and self._positions is not None:
                     for idx1, idx2, type_str, color_hex in self.interaction_lines:
                         n1 = old_to_new.get(idx1, idx1)
                         n2 = old_to_new.get(idx2, idx2)
@@ -458,7 +463,7 @@ zoom : float
                         painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
                 # Draw Selection Rings
-                if self.selected_atoms:
+                if self.selected_atoms and self._positions is not None:
                     for atom_idx in self.selected_atoms:
                         new_idx = old_to_new.get(atom_idx, atom_idx)
                         if new_idx >= len(self._positions):
@@ -476,7 +481,7 @@ zoom : float
                         self._draw_selection_ring(painter, sx, sy, radius)
 
                 # Draw Measurements based on ordered selection
-                if hasattr(self, '_selected_atoms_ordered') and len(self._selected_atoms_ordered) >= 2:
+                if hasattr(self, '_selected_atoms_ordered') and len(self._selected_atoms_ordered) >= 2 and self._positions is not None:
                     font = painter.font()
                     font.setBold(True)
                     painter.setFont(font)
@@ -525,7 +530,7 @@ zoom : float
                                     painter.drawText(int(x2 + 10), int(y2 + 10), f"{angle:.1f}°")
                 
                 # Draw Labels
-                if self.labels:
+                if self.labels and self._positions is not None:
                     from src.features.visualization_3d.services.atom_rendering import draw_label
                     for atom_idx, text in self.labels.items():
                         new_idx = old_to_new.get(atom_idx, atom_idx)
@@ -544,7 +549,7 @@ zoom : float
                         draw_label(painter, text, sx, sy, radius, self.label_font_size, 1.0, self.label_color)
 
                 # Draw Residue Labels
-                if self.labeled_residues and self.residue_label_settings.get('show_labels', True):
+                if self.labeled_residues and self.residue_label_settings.get('show_labels', True) and self._positions is not None:
                     from src.features.visualization_3d.services.atom_rendering import draw_residue_label
                     for atom in self.molecule.atoms:
                         rs = getattr(atom, 'res_seq', None)
@@ -569,6 +574,100 @@ zoom : float
 
             finally:
                 painter.end()
+
+    def _draw_dummy_spheres_gl(self, painter, w, h, proj, view, mvp):
+        """Draw dummy spheres (COM, centroid, custom) over the OpenGL viewport using QPainter."""
+        if not hasattr(self.molecule, 'dummy_spheres') or not self.molecule.dummy_spheres:
+            return
+
+        dummy_spheres = self.molecule.dummy_spheres
+        centroid = getattr(self, '_centroid', None)
+        if centroid is None:
+            centroid = np.zeros(3, dtype=np.float32)
+
+        spheres_with_depth = []
+        for sphere in dummy_spheres:
+            if not getattr(sphere, 'visible', True):
+                continue
+
+            pos = getattr(sphere, 'position', (0.0, 0.0, 0.0))
+            x = float(pos[0]) - float(centroid[0])
+            y = float(pos[1]) - float(centroid[1])
+            z = float(pos[2]) - float(centroid[2])
+
+            vec4 = QVector4D(x, y, z, 1.0)
+            clip = mvp.map(vec4)
+
+            if abs(clip.w()) > 1e-6:
+                ndc_x = clip.x() / clip.w()
+                ndc_y = clip.y() / clip.w()
+                ndc_z = clip.z() / clip.w()
+            else:
+                ndc_x = ndc_y = ndc_z = 0.0
+
+            sx = (ndc_x + 1.0) * 0.5 * w
+            sy = (1.0 - ndc_y) * 0.5 * h
+
+            vec3 = QVector3D(x, y, z)
+            view_pos = view.map(vec3)
+            z_dist = view_pos.z()
+
+            if z_dist > 0:  # Behind camera
+                continue
+
+            spheres_with_depth.append((sphere, sx, sy, z_dist))
+
+        sorted_spheres = sorted(spheres_with_depth, key=lambda s: (s[3], -getattr(s[0], 'radius', 0.5)))
+
+        tan_half_fov = math.tan(math.radians(22.5))
+        for sphere, sx, sy, z_dist in sorted_spheres:
+            radius = getattr(sphere, 'radius', 0.5)
+            alpha = getattr(sphere, 'alpha', 1.0)
+
+            if z_dist < -0.001:
+                scale = (h / 2.0) / (tan_half_fov * -z_dist)
+            else:
+                scale = 1.0
+
+            label = getattr(sphere, 'label', '')
+            if label in ['COM', 'Centroid']:
+                display_r = radius * scale * getattr(self, 'sphere_scale', 1.0)
+            else:
+                display_r = radius * scale
+
+            color_hex = getattr(sphere, 'color', '#ffff00')
+            from src.shared.ui.theme import COLORS
+            if label == 'COM':
+                color_hex = COLORS.get('sphere_com', color_hex)
+            elif label == 'Centroid':
+                color_hex = COLORS.get('sphere_centroid', color_hex)
+
+            color_q = QColor(color_hex)
+            alpha_val = max(0.0, min(1.0, alpha))
+
+            grad = QRadialGradient(QPointF(sx - display_r * 0.3, sy - display_r * 0.3), max(1.0, display_r * 1.3))
+            highlight = QColor(255, 255, 255, int(alpha_val * 220))
+            mid_color = QColor(color_q.red(), color_q.green(), color_q.blue(), int(alpha_val * 230))
+            dark = QColor(max(0, color_q.red() - 70), max(0, color_q.green() - 70), max(0, color_q.blue() - 70), int(alpha_val * 255))
+
+            grad.setColorAt(0.0, highlight)
+            grad.setColorAt(0.35, mid_color)
+            grad.setColorAt(1.0, dark)
+
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(grad))
+            r_val = max(2.0, display_r)
+            painter.drawEllipse(QRectF(sx - r_val, sy - r_val, r_val * 2.0, r_val * 2.0))
+
+            is_custom = label and label.lower() == 'custom'
+            if label and alpha_val > 0.2 and not is_custom:
+                painter.setPen(QColor(255, 255, 255, int(alpha_val * 255)))
+                font = painter.font()
+                font.setPointSize(8)
+                font.setBold(False)
+                painter.setFont(font)
+                label_rect = QRectF(sx + r_val + 5, sy - 10, 150, 20)
+                painter.drawText(label_rect, Qt.AlignmentFlag.AlignLeft, label)
 
         # Draw lasso polygon overlay (while Ctrl+dragging)
         if getattr(self, '_is_lasso', False) and getattr(self, '_lasso_path', []):

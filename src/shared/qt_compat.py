@@ -207,6 +207,24 @@ except ImportError as e:
                 def connect(self, slot): pass
                 def emit(self): pass
         
+        class QVector3D:
+            def __init__(self, x=0.0, y=0.0, z=0.0):
+                self._x, self._y, self._z = float(x), float(y), float(z)
+            def x(self): return self._x
+            def y(self): return self._y
+            def z(self): return self._z
+
+        class QVector4D:
+            def __init__(self, x=0.0, y=0.0, z=0.0, w=1.0):
+                self._x, self._y, self._z, self._w = float(x), float(y), float(z), float(w)
+            def x(self): return self._x
+            def y(self): return self._y
+            def z(self): return self._z
+            def w(self): return self._w
+
+        class QMatrix4x4:
+            def map(self, vec): return vec
+
         class QTextCursor:
             def __init__(self): pass
         class QTextCharFormat:
