@@ -94,13 +94,12 @@ class HandCodedAtomTyper:
         has_triple = False
         double_neighbor_syms = []
         for n_idx in neighbors:
-            for nb_other, bond_idx in mol._adjacency[atom.index]:
+            for nb_other, bond in mol.get_neighbor_bonds(atom.index):
                 if nb_other == n_idx:
-                    order = mol.bonds[bond_idx].order
-                    if order == 2:
+                    if bond.order == 2:
                         has_double = True
                         double_neighbor_syms.append(mol.atoms[n_idx].symbol)
-                    elif order == 3:
+                    elif bond.order == 3:
                         has_triple = True
 
         # Type 4: alkyne (sp C with triple bond).
@@ -169,8 +168,8 @@ class HandCodedAtomTyper:
         # Determine double bonds + bond-order details.
         has_double_to = []  # list of (symbol) per double-bond
         for n_idx in neighbors:
-            for nb_other, bond_idx in mol._adjacency[atom.index]:
-                if nb_other == n_idx and mol.bonds[bond_idx].order == 2:
+            for nb_other, bond in mol.get_neighbor_bonds(atom.index):
+                if nb_other == n_idx and bond.order == 2:
                     has_double_to.append(mol.atoms[n_idx].symbol)
                     break
 
@@ -189,9 +188,9 @@ class HandCodedAtomTyper:
         for na in neighbor_atoms:
             if na.symbol == "C":
                 # Check if that C has a =O
-                for c_nb, c_bond_idx in mol._adjacency[na.index]:
+                for c_nb, c_bond in mol.get_neighbor_bonds(na.index):
                     if (mol.atoms[c_nb].symbol == "O"
-                            and mol.bonds[c_bond_idx].order == 2):
+                            and c_bond.order == 2):
                         return (10, 10)
 
         # Type 9: imine N (sp2 N with =C).
@@ -224,8 +223,8 @@ class HandCodedAtomTyper:
         # Determine if double-bonded.
         has_double = False
         for n_idx in neighbors:
-            for nb_other, bond_idx in mol._adjacency[atom.index]:
-                if nb_other == n_idx and mol.bonds[bond_idx].order == 2:
+            for nb_other, bond in mol.get_neighbor_bonds(atom.index):
+                if nb_other == n_idx and bond.order == 2:
                     has_double = True
                     break
             if has_double:
@@ -257,8 +256,8 @@ class HandCodedAtomTyper:
         n_double_o = 0
         n_double_other = 0
         for n_idx in neighbors:
-            for nb_other, bond_idx in mol._adjacency[atom.index]:
-                if nb_other == n_idx and mol.bonds[bond_idx].order == 2:
+            for nb_other, bond in mol.get_neighbor_bonds(atom.index):
+                if nb_other == n_idx and bond.order == 2:
                     if mol.atoms[n_idx].symbol == "O":
                         n_double_o += 1
                     else:
@@ -284,8 +283,8 @@ class HandCodedAtomTyper:
         # Count =O double bonds.
         n_double_o = 0
         for n_idx in mol.get_neighbors(atom.index):
-            for nb_other, bond_idx in mol._adjacency[atom.index]:
-                if nb_other == n_idx and mol.bonds[bond_idx].order == 2:
+            for nb_other, bond in mol.get_neighbor_bonds(atom.index):
+                if nb_other == n_idx and bond.order == 2:
                     if mol.atoms[n_idx].symbol == "O":
                         n_double_o += 1
 
