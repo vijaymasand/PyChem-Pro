@@ -185,7 +185,13 @@ def export_image(window, dpi, white_bg):
         "PNG Image (*.png);;TIFF Image (*.tiff *.tif);;JPEG Image (*.jpg *.jpeg);;BMP Image (*.bmp);;All Files (*)")
     if filepath:
         try:
-            success = current_viewer.export_image(filepath, dpi=dpi, bg_white=white_bg)
+            import inspect
+            sig = inspect.signature(current_viewer.export_image)
+            kwargs = {'dpi': dpi, 'bg_white': white_bg}
+            if 'high_quality' in sig.parameters:
+                kwargs['high_quality'] = True
+            
+            success = current_viewer.export_image(filepath, **kwargs)
             if success:
                 window.status_bar.showMessage(f"Image saved: {filepath} ({dpi} DPI)")
             else:

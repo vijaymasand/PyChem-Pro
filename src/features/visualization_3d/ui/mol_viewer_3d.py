@@ -974,6 +974,10 @@ class MolViewer3D(QWidget):
         else:
             if high_quality:
                 # Use QPainter software rendering for "Ray (slow)" high-quality export
+                # Ensure the software viewer has the same molecule loaded
+                if getattr(self.software_viewer, 'molecule', None) is not getattr(self.gl_viewer, 'molecule', None):
+                    self.software_viewer.set_molecule(self.gl_viewer.molecule)
+                
                 # Sync camera and settings to software viewer before rendering
                 self.software_viewer.rot_x = self.gl_viewer.rot_x
                 self.software_viewer.rot_y = self.gl_viewer.rot_y
