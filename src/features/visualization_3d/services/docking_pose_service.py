@@ -32,7 +32,7 @@ class DockingPoseService:
             # Higher score = more likely to be a ligand
             het_count = sum(1 for idx in frag if getattr(self.molecule.atoms[idx], 'is_hetatm', False))
             atom0 = self.molecule.atoms[next(iter(frag))]
-            res_name = getattr(atom0, 'res_name', '').upper()
+            res_name = (getattr(atom0, 'res_name', '') or '').upper()
             is_water = res_name in ('HOH', 'WAT', 'SOL', 'DOD')
             
             if is_water: return -1 # Waters are last
