@@ -233,9 +233,7 @@ def _apply_overlay_3d(window, overlay, refit, reset_selection):
     # a render mode from is_protein.
     v3.labels = {}
     v3.custom_atom_modes = overlay.custom_modes
-    v3.software_viewer.custom_atom_colors = overlay.custom_colors
-    if hasattr(v3.gl_viewer, 'custom_atom_colors'):
-        v3.gl_viewer.custom_atom_colors = overlay.custom_colors
+    v3.set_atom_colors(overlay.custom_colors)
     v3.render_mode = _compute_global_mode(window.scene, overlay)
 
     if hasattr(v3.software_viewer, '_renderer'):
