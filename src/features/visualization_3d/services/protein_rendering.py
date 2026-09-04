@@ -78,7 +78,7 @@ class ProteinStructure:
             if key not in residue_data:
                 residue_data[key] = {
                     'atoms': [],
-                    'res_name': getattr(atom, 'res_name', 'UNK'),
+                    'res_name': getattr(atom, 'res_name', 'UNK') or 'UNK',
                     'b_factors': []
                 }
             
