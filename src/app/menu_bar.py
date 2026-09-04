@@ -110,6 +110,13 @@ def _build_edit_menu(window, menu_bar):
 
     edit_menu.addSeparator()
 
+    edit_residue_color_action = QAction("Residue Label Settings...", window)
+    edit_residue_color_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+    edit_residue_color_action.triggered.connect(window._change_residue_colors)
+    edit_menu.addAction(edit_residue_color_action)
+
+    edit_menu.addSeparator()
+
     copy_image_action = QAction("&Copy as Image...", window)
     copy_image_action.setShortcut(QKeySequence("Ctrl+Shift+I"))
     copy_image_action.triggered.connect(window._copy_as_image)

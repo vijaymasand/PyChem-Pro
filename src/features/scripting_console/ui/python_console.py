@@ -506,21 +506,21 @@ class PythonConsole(QWidget):
             
         if term.startswith('resname '):
             rn = term[8:].strip().upper()
-            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() == rn)
+            return set(a.index for a in mol.atoms if (getattr(a, 'res_name', '') or '').upper() == rn)
             
         if term.startswith('resn '):
             rn = term[5:].strip().upper()
-            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() == rn)
+            return set(a.index for a in mol.atoms if (getattr(a, 'res_name', '') or '').upper() == rn)
             
         if term.startswith('resid ') or term.startswith('resi ') or term.startswith('resnum '):
             rn = term.split()[1].strip()
             return set(a.index for a in mol.atoms if str(getattr(a, 'res_seq', '')) == rn)
 
         if term in ('organic', 'ligand', 'ligands'):
-            return set(a.index for a in mol.atoms if getattr(a, 'is_hetatm', False) and getattr(a, 'res_name', '').upper() not in ('HOH', 'WAT', 'SOL', 'DOD'))
+            return set(a.index for a in mol.atoms if getattr(a, 'is_hetatm', False) and (getattr(a, 'res_name', '') or '').upper() not in ('HOH', 'WAT', 'SOL', 'DOD'))
 
         if term in ('solvent', 'water', 'sol', 'wat', 'hoh'):
-            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() in ('HOH', 'WAT', 'SOL', 'DOD'))
+            return set(a.index for a in mol.atoms if (getattr(a, 'res_name', '') or '').upper() in ('HOH', 'WAT', 'SOL', 'DOD'))
 
         # Element symbol — case-insensitive matching
         # Try exact match first, then capitalize
@@ -561,9 +561,9 @@ class PythonConsole(QWidget):
             'LEU', 'LYS', 'MET', 'PHE', 'PRO', 'SER', 'THR', 'TRP', 'TYR', 'VAL',
             'MSE', 'SEC', 'PYL', 'HOH', 'WAT', 'SOL', 'DOD'
         }
-        mol_res_names = {getattr(a, 'res_name', '').upper() for a in mol.atoms if getattr(a, 'res_name', None)}
+        mol_res_names = {(getattr(a, 'res_name', '') or '').upper() for a in mol.atoms if getattr(a, 'res_name', None)}
         if term_upper in mol_res_names or term_upper in _AMINO_ACIDS:
-            return set(a.index for a in mol.atoms if getattr(a, 'res_name', '').upper() == term_upper)
+            return set(a.index for a in mol.atoms if (getattr(a, 'res_name', '') or '').upper() == term_upper)
         
         raise ValueError(f"Unknown selection term: '{term}'")
 

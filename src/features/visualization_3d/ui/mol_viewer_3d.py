@@ -976,15 +976,37 @@ class MolViewer3D(QWidget):
                 # Use QPainter software rendering for "Ray (slow)" high-quality export
                 # Ensure the software viewer has the same molecule loaded
                 if getattr(self.software_viewer, 'molecule', None) is not getattr(self.gl_viewer, 'molecule', None):
+                    # Cache the volatile state from the GL viewer before set_molecule clears it
+                    temp_colors = getattr(self.gl_viewer, 'custom_atom_colors', {}).copy()
+                    temp_labels = getattr(self.gl_viewer, 'labels', {}).copy()
+                    
                     self.software_viewer.set_molecule(self.gl_viewer.molecule)
+                    
+                    # Restore the volatile state that set_molecule wiped
+                    self.software_viewer.custom_atom_colors = temp_colors
+                    self.software_viewer.labels = temp_labels
                 
                 # Sync camera and settings to software viewer before rendering
                 self.software_viewer.rot_x = self.gl_viewer.rot_x
                 self.software_viewer.rot_y = self.gl_viewer.rot_y
                 self.software_viewer.rot_z = self.gl_viewer.rot_z
-                self.software_viewer.pan_x = self.gl_viewer.pan_x
-                self.software_viewer.pan_y = self.gl_viewer.pan_y
-                self.software_viewer.zoom = self.gl_viewer.zoom
+                
+                # Convert GL's perspective zoom (Z-translation) to Software's orthographic zoom (pixels/Angstrom)
+                import math
+                distance = max(0.1, 100.0 - self.gl_viewer.zoom)
+                fov_rad = math.radians(45.0)
+                visible_height_angstroms = 2.0 * distance * math.tan(fov_rad / 2.0)
+                
+                self.software_viewer.zoom = self.gl_viewer.height() / visible_height_angstroms
+                
+                # Pan values in GL are also handled differently, but they are conceptually screen-relative. 
+                # A simple approximation for now is scaling them relative to the new zoom.
+                # In gl_widget, translation is: pan / gl_viewer.zoom
+                # In orthographic, pan is just pixels. To keep the visual offset identical:
+                pan_scale = self.software_viewer.zoom / max(1.0, self.gl_viewer.zoom)
+                self.software_viewer.pan_x = self.gl_viewer.pan_x * pan_scale
+                self.software_viewer.pan_y = self.gl_viewer.pan_y * pan_scale
+                
                 if hasattr(self.gl_viewer, '_centroid'):
                     self.software_viewer._centroid = self.gl_viewer._centroid
                 return self.software_viewer.export_image(filepath, dpi, bg_white, override_size=(self.gl_viewer.width(), self.gl_viewer.height()))
