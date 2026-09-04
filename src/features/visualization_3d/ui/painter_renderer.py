@@ -179,7 +179,7 @@ class PainterRenderer:
                 continue
 
             if getattr(v, 'hide_solvent', False):
-                res_name = getattr(atom, 'res_name', '').upper()
+                res_name = (getattr(atom, 'res_name', '') or '').upper()
                 if res_name in ('HOH', 'WAT', 'SOL', 'DOD'):
                     continue
 
@@ -305,7 +305,7 @@ class PainterRenderer:
                 for atom in v.molecule.atoms:
                     if getattr(atom, 'is_hetatm', False):
                         # Filter out water by default
-                        res_name = getattr(atom, 'res_name', '').upper()
+                        res_name = (getattr(atom, 'res_name', '') or '').upper()
                         if res_name not in ('HOH', 'WAT', 'SOL', 'DOD'):
                             atoms_to_draw.add(atom.index)
             
@@ -406,9 +406,11 @@ class PainterRenderer:
                     rs = getattr(atom, 'res_seq', None)
                     if rs is not None and rs in v.labeled_residues:
                         if hasattr(atom, 'pdb_name') and atom.pdb_name.strip() == 'CA':
-                            res_name = getattr(atom, 'res_name', 'UNK')
+                            res_name = getattr(atom, 'res_name', 'UNK') or 'UNK'
                             lbl_color = v.labeled_residues[rs]
-                            self._draw_residue_label(v, painter, f"{res_name}{rs}", sx, sy, lbl_color, radius, settings)
+                            from src.features.visualization_3d.services.atom_rendering import get_formatted_residue_label
+                            label_text = get_formatted_residue_label(res_name, rs, settings)
+                            self._draw_residue_label(v, painter, label_text, sx, sy, lbl_color, radius, settings)
 
         # Draw dummy spheres (COM, centroid, custom)
         self._draw_dummy_spheres(v, painter, width, height)
@@ -999,7 +1001,7 @@ class PainterRenderer:
                 residues[key] = {
                     'chain_id': chain_id,
                     'res_seq': res_seq,
-                    'res_name': getattr(atom, 'res_name', 'UNK'),
+                    'res_name': getattr(atom, 'res_name', 'UNK') or 'UNK',
                     'atoms': [],
                     'ss_type': getattr(atom, 'ss_type', 'C')
                 }
