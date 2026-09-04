@@ -550,7 +550,7 @@ zoom : float
 
                 # Draw Residue Labels
                 if self.labeled_residues and self.residue_label_settings.get('show_labels', True) and self._positions is not None:
-                    from src.features.visualization_3d.services.atom_rendering import draw_residue_label
+                    from src.features.visualization_3d.services.atom_rendering import draw_residue_label, get_formatted_residue_label
                     for atom in self.molecule.atoms:
                         rs = getattr(atom, 'res_seq', None)
                         if rs is not None and rs in self.labeled_residues:
@@ -570,7 +570,8 @@ zoom : float
                                 radius = self._radii[new_idx] * scale * self.sphere_scale
                                 res_name = getattr(atom, 'res_name', 'UNK')
                                 lbl_color = self.labeled_residues[rs]
-                                draw_residue_label(painter, f"{res_name}{rs}", sx, sy, lbl_color, radius, self.label_font_size, 1.0, self.residue_label_settings)
+                                label_text = get_formatted_residue_label(res_name, rs, self.residue_label_settings)
+                                draw_residue_label(painter, label_text, sx, sy, lbl_color, radius, self.label_font_size, 1.0, self.residue_label_settings)
 
             finally:
                 painter.end()

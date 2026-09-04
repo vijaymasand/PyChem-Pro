@@ -13,6 +13,26 @@ def _hex_to_rgb(hex_str: str):
     hex_str = hex_str.lstrip('#')
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
+THREE_TO_ONE = {
+    'ALA': 'A', 'ARG': 'R', 'ASN': 'N', 'ASP': 'D',
+    'CYS': 'C', 'GLN': 'Q', 'GLU': 'E', 'GLY': 'G',
+    'HIS': 'H', 'ILE': 'I', 'LEU': 'L', 'LYS': 'K',
+    'MET': 'M', 'PHE': 'F', 'PRO': 'P', 'SER': 'S',
+    'THR': 'T', 'TRP': 'W', 'TYR': 'Y', 'VAL': 'V'
+}
+
+def get_formatted_residue_label(res_name: str, res_seq: str, settings: dict) -> str:
+    fmt = settings.get('label_format', '3-Letter (ALA 10)')
+    if fmt == '1-Letter (A 10)':
+        one_letter = THREE_TO_ONE.get(res_name.upper(), '?')
+        return f"{one_letter}{res_seq}"
+    elif fmt == 'Name Only':
+        return res_name
+    elif fmt == 'Number Only':
+        return str(res_seq)
+    # Default is 3-Letter (ALA 10)
+    return f"{res_name}{res_seq}"
+
 def draw_atom_sphere(painter: QPainter, sx: float, sy: float, sz: float, radius: float, rgb: tuple, 
                      is_hovered: bool = False, use_ssao: bool = False, alpha: float = 1.0):
     """
@@ -91,9 +111,6 @@ def draw_selection_ring(painter: QPainter, sx: float, sy: float, radius: float):
 
 def draw_label(painter: QPainter, label: str, sx: float, sy: float, radius: float, base_font_size: int, export_scale: float = 1.0, color: QColor = None):
     font_size = base_font_size
-    if export_scale > 1.0:
-        scale_factor = min(export_scale * 0.3, 0.8)
-        font_size = max(6, int(font_size * scale_factor))
 
     font = QFont('Segoe UI', font_size)
     font.setBold(True)
@@ -116,10 +133,6 @@ def draw_residue_label(painter: QPainter, text: str, sx: float, sy: float, color
     is_bold = settings.get('bold', True)
     is_italic = settings.get('italic', False)
     draw_bg = settings.get('background', False)
-
-    if export_scale > 1.0:
-        scale_factor = min(export_scale * 0.3, 0.8)
-        font_size = max(8, int(font_size * scale_factor))
 
     font = QFont(font_family, font_size)
     font.setBold(is_bold)

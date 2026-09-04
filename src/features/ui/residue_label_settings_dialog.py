@@ -82,6 +82,10 @@ class ResidueLabelSettingsDialog(QDialog):
         self.background_check.setChecked(False)
         options_layout.addRow("", self.background_check)
         
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["3-Letter (ALA 10)", "1-Letter (A 10)", "Name Only", "Number Only"])
+        options_layout.addRow("Format:", self.format_combo)
+        
         options_group.setLayout(options_layout)
         
         # Buttons
@@ -141,12 +145,15 @@ class ResidueLabelSettingsDialog(QDialog):
                     self.show_labels_check.setChecked(settings['show_labels'])
                 if 'background' in settings:
                     self.background_check.setChecked(settings['background'])
+                if 'label_format' in settings:
+                    self.format_combo.setCurrentText(settings['label_format'])
             else:
                 # Set default font values
                 self.font_combo.setCurrentText("Arial")
                 self.font_size_spin.setValue(12)
                 self.bold_check.setChecked(False)
                 self.italic_check.setChecked(False)
+                self.format_combo.setCurrentIndex(0)
     
     def _choose_color(self):
         """Open color picker dialog."""
@@ -166,18 +173,11 @@ class ResidueLabelSettingsDialog(QDialog):
         self.italic_check.setChecked(False)
         self.show_labels_check.setChecked(True)
         self.background_check.setChecked(False)
+        self.format_combo.setCurrentIndex(0)
     
     def _apply_settings(self):
         """Apply settings and emit signal."""
-        settings = {
-            'color': self.current_color if hasattr(self, 'current_color') else Qt.black,
-            'font_family': self.font_combo.currentText(),
-            'font_size': self.font_size_spin.value(),
-            'bold': self.bold_check.isChecked(),
-            'italic': self.italic_check.isChecked(),
-            'show_labels': self.show_labels_check.isChecked(),
-            'background': self.background_check.isChecked()
-        }
+        settings = self.get_settings()
         
         self.settings_changed.emit(settings)
         self.accept()
@@ -191,7 +191,8 @@ class ResidueLabelSettingsDialog(QDialog):
             'bold': self.bold_check.isChecked(),
             'italic': self.italic_check.isChecked(),
             'show_labels': self.show_labels_check.isChecked(),
-            'background': self.background_check.isChecked()
+            'background': self.background_check.isChecked(),
+            'label_format': self.format_combo.currentText()
         }
 
 
