@@ -34,6 +34,7 @@ We are incredibly grateful to the following individuals and institutions who hav
 *   **Dr. Meghshyam K. Patil** - Dr. Babasaheb Ambedkar Marathwada Universiy Sub-campus Dharashiv, Dharashiv, Maharashtra. *Thank you for your generous support!*
 *   **Dushyanth Reddy Vennapu** - Ph.D. Scholar, Central University of Punjab. *Thank you for your generous support!*
 *   **Dr. Tomasz M. Karpiński** - Prof. UM, Poznań University of Medical Sciences, Poznań, Poland. *Thank you for your generous support!*
+*   **Manoj Sabnani** - School of Bioengineering. MIT ADT Pune. India. *Thank you for your generous support!*
 
 *(Note: If you have contributed and would like your name, lab link, or research focus displayed here, please open an issue or message us in our community groups.)* 
 
