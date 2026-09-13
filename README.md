@@ -15,7 +15,7 @@
 
 **Financial support/Sponsorship**
 🎉 Another PyChem-Pro Milestone Update!
-We are glad to share that PyChem-Pro has received another official financial support from Dr. Tomasz M. Karpiński, Prof. UM, Poznań University of Medical Sciences, Poznań, Poland. *Thank you for your generous support!* 
+We are glad to share that PyChem-Pro has received another official financial support from Dr. Manoj Sabnani, School of Bioengineering. MIT ADT Pune. India. *Thank you for your generous support!* 
 
 ---
 
