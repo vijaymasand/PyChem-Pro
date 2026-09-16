@@ -1102,7 +1102,7 @@ class DockingPoseVisualizerWidget(QWidget):
                         Qt.NoPen, QBrush(Qt.white)
                     )
                     bg.setOpacity(0.9)
-                    bg.setZValue(4)
+                    bg.setZValue(2)
                     self.viewer.scene.addItem(txt)
 
             # Interaction Data Processing
