@@ -951,6 +951,17 @@ class DockingPoseVisualizerWidget(QWidget):
                 if orig_idx is not None:
                     # Stash original index in the OASA atom object itself
                     o_atom.pychem_orig_idx = orig_idx
+                    o_atom._stable_idx = orig_idx
+            
+            # Ensure edge vertices are tagged
+            for edge in o_mol.edges:
+                for v in edge.vertices:
+                    if getattr(v, 'pychem_orig_idx', None) is None:
+                        st = getattr(v, '_stable_idx', None)
+                        if st in reverse_idx_map:
+                            v.pychem_orig_idx = reverse_idx_map[st]
+                        elif st in idx_map:
+                            v.pychem_orig_idx = st
             
             try:
                 o_mol.remove_unimportant_hydrogens()
@@ -989,94 +1000,120 @@ class DockingPoseVisualizerWidget(QWidget):
             for edge in o_mol.edges:
                 if getattr(edge, 'order', 1) not in (1, 2, 3):
                     edge.order = 1
+
+            # Re-synchronize tags across vertices and edges after OASA transformations
+            for o_v in o_mol.vertices:
+                if getattr(o_v, 'pychem_orig_idx', None) is None:
+                    st = getattr(o_v, '_stable_idx', None)
+                    if st in reverse_idx_map:
+                        o_v.pychem_orig_idx = reverse_idx_map[st]
+                    elif st in idx_map:
+                        o_v.pychem_orig_idx = st
+
+            for edge in o_mol.edges:
+                for v in edge.vertices:
+                    if getattr(v, 'pychem_orig_idx', None) is None:
+                        st = getattr(v, '_stable_idx', None)
+                        if st in reverse_idx_map:
+                            v.pychem_orig_idx = reverse_idx_map[st]
+                        elif st in idx_map:
+                            v.pychem_orig_idx = st
+
             generator = oasa_cg.coords_generator(bond_length=1.0)
             generator.calculate_coords(o_mol, force=1)
             
-            # Rebuild mapping using the persistent tags
+            # Multi-strategy vertex resolution helper
+            def get_orig_idx(v):
+                if v is None:
+                    return None
+                if hasattr(v, 'pychem_orig_idx') and v.pychem_orig_idx is not None:
+                    return v.pychem_orig_idx
+                if id(v) in oasa_reverse:
+                    return oasa_reverse[id(v)]
+                st = getattr(v, '_stable_idx', None)
+                if st is not None:
+                    if st in reverse_idx_map:
+                        return reverse_idx_map[st]
+                    if st in idx_map:
+                        return st
+                return None
+
+            # Rebuild mapping using persistent tags and fallbacks
             temp_coords = {}
             oasa_reverse = {} # {id(o_atom): pychem_idx}
             for o_v in o_mol.vertices:
-                orig_idx = getattr(o_v, 'pychem_orig_idx', None)
+                orig_idx = get_orig_idx(o_v)
                 if orig_idx is not None:
-                    temp_coords[orig_idx] = (o_v.x * 120, -o_v.y * 120)
+                    o_v.pychem_orig_idx = orig_idx
                     oasa_reverse[id(o_v)] = orig_idx
+                    if o_v.x is not None and o_v.y is not None:
+                        temp_coords[orig_idx] = (o_v.x * 120, -o_v.y * 120)
+
+            # Ensure any edge vertices with coordinates are also recorded
+            for edge in o_mol.edges:
+                for v in edge.vertices:
+                    orig_idx = get_orig_idx(v)
+                    if orig_idx is not None:
+                        v.pychem_orig_idx = orig_idx
+                        oasa_reverse[id(v)] = orig_idx
+                        if orig_idx not in temp_coords and v.x is not None and v.y is not None:
+                            temp_coords[orig_idx] = (v.x * 120, -v.y * 120)
             
             d_coords = self._align_coordinates(temp_coords)
             if not d_coords: return
+
+            # Ensure all heavy ligand atoms have a position in d_coords
+            for la in ligand_atoms:
+                if la.symbol == 'H':
+                    continue
+                if la.index not in d_coords:
+                    # Fallback position near a connected neighbor in d_coords
+                    neighbors = [n for n in self.molecule.get_neighbors(la.index) if n in d_coords]
+                    if neighbors:
+                        nx, ny = d_coords[neighbors[0]]
+                        d_coords[la.index] = (nx + 60, ny + 60)
             
-            # Pre-identify labeled heteroatoms for bond line margin clipping
-            labeled_atoms = {la_idx for la_idx in d_coords.keys() if self.molecule.atoms[la_idx].symbol != 'C'}
-            
-            # Determine incoming bond directions for labeled heteroatoms to place 'H' smartly (e.g. NH2 vs H2N)
-            bond_directions: Dict[int, List[float]] = {}
+            # Draw Bonds
+            drawn_bonds = set()
+            bond_pen = QPen(Qt.black, 2.5, Qt.SolidLine, Qt.RoundCap)
             for bond in o_mol.edges:
                 v1, v2 = bond.vertices
-                la1_idx, la2_idx = oasa_reverse.get(id(v1)), oasa_reverse.get(id(v2))
-                if la1_idx in d_coords and la2_idx in d_coords:
-                    p1, p2 = d_coords[la1_idx], d_coords[la2_idx]
-                    bond_directions.setdefault(la1_idx, []).append(p2[0] - p1[0])
-                    bond_directions.setdefault(la2_idx, []).append(p1[0] - p2[0])
-
-            # Draw Bonds (with Margin Clipping near heteroatom labels)
-            bond_pen = QPen(QColor("#2c3e50"), 2.0, Qt.SolidLine, Qt.RoundCap)
-            font_label = QFont("Segoe UI", 11, QFont.Bold)
-
-            for bond in o_mol.edges:
-                v1, v2 = bond.vertices
-                la1_idx, la2_idx = oasa_reverse.get(id(v1)), oasa_reverse.get(id(v2))
+                la1_idx = get_orig_idx(v1)
+                la2_idx = get_orig_idx(v2)
                 if la1_idx is None or la2_idx is None: continue
                 if la1_idx not in d_coords or la2_idx not in d_coords: continue
                     
+                pair = tuple(sorted((la1_idx, la2_idx)))
+                drawn_bonds.add(pair)
+
+                # Bond rendering (Respecting OASA localized orders)
                 p1, p2 = d_coords[la1_idx], d_coords[la2_idx]
-                diff_x, diff_y = p2[0] - p1[0], p2[1] - p1[1]
-                blen = math.hypot(diff_x, diff_y)
-                if blen < 1e-3: continue
-                ux, uy = diff_x / blen, diff_y / blen
-
-                # Dynamic bounding box margin clipping near heteroatom labels (exact connection to bg border)
-                m1 = 0.0
-                if la1_idx in labeled_atoms:
-                    hw = 12.0  # default half-width
-                    hh = 11.0  # default half-height
-                    h_cnt1 = len([n for n in self.molecule.get_neighbors(la1_idx) if self.molecule.atoms[n].symbol == 'H'])
-                    if h_cnt1 > 0: hw = 18.0  # wider box for NH2, NH, OH
-                    m1 = min(abs(hw / (ux if abs(ux) > 1e-6 else 1e-6)), abs(hh / (uy if abs(uy) > 1e-6 else 1e-6)))
-
-                m2 = 0.0
-                if la2_idx in labeled_atoms:
-                    hw = 12.0
-                    hh = 11.0
-                    h_cnt2 = len([n for n in self.molecule.get_neighbors(la2_idx) if self.molecule.atoms[n].symbol == 'H'])
-                    if h_cnt2 > 0: hw = 18.0
-                    m2 = min(abs(hw / (ux if abs(ux) > 1e-6 else 1e-6)), abs(hh / (uy if abs(uy) > 1e-6 else 1e-6)))
-
-                if blen <= (m1 + m2):
-                    continue
-
-                sp1 = QPointF(p1[0] + ux * m1, p1[1] + uy * m1)
-                sp2 = QPointF(p2[0] - ux * m2, p2[1] - uy * m2)
-
+                q1, q2 = QPointF(*p1), QPointF(*p2)
                 order = getattr(bond, 'order', 1)
                 
                 if order == 2:
                     # Double bond logic: Robust interior placement
-                    diff = sp2 - sp1
+                    diff = q2 - q1
                     norm = QPointF(-diff.y(), diff.x())
                     ilen = math.hypot(norm.x(), norm.y())
                     if ilen > 0: norm /= ilen
                     
+                    # Offset for second line
                     off_dist = 4.0
                     side = 1.0
                     
+                    # Find which cycle this bond belongs to for interior detection
                     all_cycles = o_mol.get_smallest_independent_cycles()
                     for cycle in all_cycles:
                         if v1 in cycle and v2 in cycle:
-                            cyc_indices = [oasa_reverse.get(id(cv)) for cv in cycle]
+                            # Calculate ring centroid
+                            cyc_indices = [get_orig_idx(cv) for cv in cycle]
                             cyc_pts = [d_coords[idx] for idx in cyc_indices if idx in d_coords]
                             if cyc_pts:
                                 cx = sum(p[0] for p in cyc_pts) / len(cyc_pts)
                                 cy = sum(p[1] for p in cyc_pts) / len(cyc_pts)
-                                mid = (sp1 + sp2) / 2
+                                mid = (q1 + q2) / 2
+                                # Determine if norm points away from center
                                 vec_to_cent = QPointF(cx - mid.x(), cy - mid.y())
                                 dot = norm.x() * vec_to_cent.x() + norm.y() * vec_to_cent.y()
                                 if dot < 0:
@@ -1084,93 +1121,84 @@ class DockingPoseVisualizerWidget(QWidget):
                             break
                     
                     off_vec = norm * (off_dist * side)
-                    l1 = self.viewer.scene.addLine(sp1.x(), sp1.y(), sp2.x(), sp2.y(), bond_pen)
+                    l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
                     l1.setZValue(3)
-                    
                     # Shorten inner line slightly for aesthetics
-                    s1 = sp1 + (sp2 - sp1) * 0.15 + off_vec
-                    s2 = sp2 - (sp2 - sp1) * 0.15 + off_vec
+                    s1 = q1 + (q2 - q1) * 0.15 + off_vec
+                    s2 = q2 - (q2 - q1) * 0.15 + off_vec
                     l2 = self.viewer.scene.addLine(s1.x(), s1.y(), s2.x(), s2.y(), bond_pen)
                     l2.setZValue(3)
                 elif order == 3:
-                    # Triple bond
-                    l1 = self.viewer.scene.addLine(sp1.x(), sp1.y(), sp2.x(), sp2.y(), bond_pen)
+                    # Triple bond (Rare but supported)
+                    l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
                     l1.setZValue(3)
-                    diff = sp2 - sp1
+                    diff = q2 - q1
                     norm = QPointF(-diff.y(), diff.x())
                     ilen = math.hypot(norm.x(), norm.y())
                     if ilen > 0: norm /= ilen
                     off = 4.0
                     for s in [-1, 1]:
                         off_v = norm * (off * s)
-                        l_extra = self.viewer.scene.addLine(sp1.x()+off_v.x(), sp1.y()+off_v.y(), sp2.x()+off_v.x(), sp2.y()+off_v.y(), bond_pen)
+                        l_extra = self.viewer.scene.addLine(q1.x()+off_v.x(), q1.y()+off_v.y(), q2.x()+off_v.x(), q2.y()+off_v.y(), bond_pen)
                         l_extra.setZValue(3)
                 else:
-                    l1 = self.viewer.scene.addLine(sp1.x(), sp1.y(), sp2.x(), sp2.y(), bond_pen)
+                    l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
                     l1.setZValue(3)
 
-            # Atom Labels (Heteroatoms centered on main atom symbol with zValue=4 bg)
-            dummy_item = QGraphicsTextItem()
-            dummy_item.setFont(font_label)
+            # Long-term solution / Guarantee: Draw all ligand bonds (e.g. NH2 exceptions, terminal groups)
+            # that were present in the ligand molecule but missed by OASA edge iteration
+            for bond in mini_mol.bonds:
+                orig1 = reverse_idx_map.get(bond.begin_atom_idx)
+                orig2 = reverse_idx_map.get(bond.end_atom_idx)
+                if orig1 is None or orig2 is None:
+                    continue
+                # Skip explicit hydrogens since they are represented inside group labels (e.g. NH2)
+                if self.molecule.atoms[orig1].symbol == 'H' or self.molecule.atoms[orig2].symbol == 'H':
+                    continue
+                pair = tuple(sorted((orig1, orig2)))
+                if pair not in drawn_bonds:
+                    if orig1 in d_coords and orig2 in d_coords:
+                        p1, p2 = d_coords[orig1], d_coords[orig2]
+                        q1, q2 = QPointF(*p1), QPointF(*p2)
+                        l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                        l1.setZValue(3)
+                        drawn_bonds.add(pair)
 
+            # Aromatic Rings removed to favor OASA Kekule localization
+            pass
+
+            # Atom Labels
             for la_idx, (lx, ly) in d_coords.items():
                 atom = self.molecule.atoms[la_idx]
                 sym = atom.symbol
                 if sym != 'C':
+                    # Determine label text with hydrogen count (e.g. NH2, NH, OH)
                     h_neighbors = [n for n in self.molecule.get_neighbors(la_idx) if self.molecule.atoms[n].symbol == 'H']
                     h_count = len(h_neighbors)
-                    
-                    avg_dx = sum(bond_directions.get(la_idx, [0])) / max(1, len(bond_directions.get(la_idx, [0])))
-                    
                     if h_count == 1:
-                        h_str = "H"
+                        label_text = f"{sym}H"
                     elif h_count > 1:
-                        h_str = f"H{h_count}"
-                    else:
-                        h_str = ""
-
-                    if h_str:
-                        if avg_dx > 20: # Bonds come from right, place H on left (e.g. H2N)
-                            label_text = f"{h_str}{sym}"
-                            is_prefix = True
-                        else: # Bonds come from left/top/bottom, place H on right (e.g. NH2)
-                            label_text = f"{sym}{h_str}"
-                            is_prefix = False
+                        label_text = f"{sym}H{h_count}"
                     else:
                         label_text = sym
-                        is_prefix = False
 
                     txt = QGraphicsTextItem(label_text)
-                    txt.setFont(font_label)
+                    txt.setFont(QFont("Segoe UI", 11, QFont.Bold))
                     txt.setDefaultTextColor(QColor(ELEMENT_STYLE.get(sym, '#808080')))
                     rect = txt.boundingRect()
-                    
-                    # Measure single atom symbol width to keep main heteroatom (N, O) centered at (lx, ly)
-                    dummy_item.setPlainText(sym)
-                    w_sym = dummy_item.boundingRect().width()
-                    w_full = rect.width()
-
-                    if label_text == sym:
-                        tx = lx - w_full / 2
-                    elif is_prefix:
-                        # e.g. H2N: N is at the end of label
-                        tx = lx - w_full + w_sym / 2
-                    else:
-                        # e.g. NH2: N is at the start of label
-                        tx = lx - w_sym / 2
-
-                    ty = ly - rect.height() / 2
-                    txt.setPos(tx, ty)
+                    txt.setPos(lx - rect.width()/2, ly - rect.height()/2)
                     txt.setZValue(5)
-                    
-                    # Clean white background rectangle behind label
+                    # White background for label with no padding
                     bg = self.viewer.scene.addRect(
-                        tx - 1, ty - 1,
-                        rect.width() + 2, rect.height() + 2,
+                        lx - rect.width()/2, ly - rect.height()/2,
+                        rect.width(), rect.height(),
                         Qt.NoPen, QBrush(Qt.white)
                     )
-                    bg.setOpacity(0.95)
+                    
+                    bg.setOpacity(0.85)
+                    txt.setZValue(5)
                     bg.setZValue(4)
+                        
                     self.viewer.scene.addItem(txt)
 
             # Interaction Data Processing
