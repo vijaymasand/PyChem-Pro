@@ -44,7 +44,6 @@ class ExtendedConstitutionalCalculator(ConstitutionalCalculator):
                        if molecule.atoms[n].symbol == 'H')
         return getattr(atom, 'total_h', 0) + explicit
 
-    # -------------------------------------------------------- mass / size
     def calc_exact_mass(self, molecule, selection) -> float:
         """Monoisotopic-style mass from the element masses, implicit H included."""
         chosen = self._selected(molecule, selection)
@@ -52,7 +51,8 @@ class ExtendedConstitutionalCalculator(ConstitutionalCalculator):
         for idx in chosen:
             atom = molecule.atoms[idx]
             total += getattr(atom, 'mass', 0.0)
-            total += self._total_h(molecule, idx, chosen) * 1.008 if atom.symbol != 'H' else 0.0
+            if atom.symbol != 'H':
+                total += (getattr(atom, 'total_h', 0) or 0) * 1.008
         return total
 
     def calc_heavy_atom_mol_weight(self, molecule, selection) -> float:
@@ -78,13 +78,19 @@ class ExtendedConstitutionalCalculator(ConstitutionalCalculator):
             atom = molecule.atoms[idx]
             total += valence_electrons(atom.symbol)
             if atom.symbol != 'H':
-                total += self._total_h(molecule, idx, chosen)
+                total += (getattr(atom, 'total_h', 0) or 0) * 1
         return total
 
     def calc_vdw_volume_sum(self, molecule, selection) -> float:
         """Sum of atomic van der Waals volumes (Bondi), no packing correction."""
         chosen = self._selected(molecule, selection)
-        return sum(VDW_VOLUME.get(molecule.atoms[i].symbol, 20.58) for i in chosen)
+        total = 0.0
+        for i in chosen:
+            atom = molecule.atoms[i]
+            total += VDW_VOLUME.get(atom.symbol, 20.58)
+            if atom.symbol != 'H':
+                total += (getattr(atom, 'total_h', 0) or 0) * VDW_VOLUME.get('H', 7.24)
+        return total
 
     # --------------------------------------------------- carbon classes
     def _carbon_substitution(self, molecule, selection, degree):

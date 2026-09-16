@@ -171,12 +171,12 @@ class ExtendedHybridCalculator(HybridCalculator):
             total += MCGOWAN_VOLUME.get(atom.symbol, 16.35)
             n_atoms += 1
             if atom.symbol != 'H':
-                hydrogens = self._h_count(molecule, idx, chosen)
-                total += hydrogens * MCGOWAN_VOLUME['H']
-                n_atoms += hydrogens
+                implicit_h = getattr(atom, 'total_h', 0) or 0
+                total += implicit_h * MCGOWAN_VOLUME['H']
+                n_atoms += implicit_h
         bonds = self.get_bond_count_in_selection(molecule, chosen)
         # implicit hydrogens add one bond each
-        bonds += sum(self._h_count(molecule, i, chosen) for i in chosen
+        bonds += sum((getattr(molecule.atoms[i], 'total_h', 0) or 0) for i in chosen
                      if molecule.atoms[i].symbol != 'H')
         return float(total - 6.56 * bonds)
 

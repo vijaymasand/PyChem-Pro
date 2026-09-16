@@ -35,7 +35,7 @@ class TopologicalCalculator(BaseCalculator):
                 degree1 = len([n for n in molecule.get_neighbors(bond.begin_atom_idx) if n in selected_set])
                 degree2 = len([n for n in molecule.get_neighbors(bond.end_atom_idx) if n in selected_set])
                 total += degree1 * degree2
-        return total / 2
+        return float(total)
 
     def calc_balaban_index(self, molecule, selection) -> float:
         """Calculate Balaban J index."""
@@ -83,17 +83,23 @@ class TopologicalCalculator(BaseCalculator):
         """Calculate Randic connectivity index (order 0)."""
         selected_set = self.get_selected_set(selection)
         total = 0.0
+        for idx in self.get_selected_atoms(molecule, selection):
+            deg = len([n for n in molecule.get_neighbors(idx) if n in selected_set])
+            if deg > 0:
+                total += 1.0 / np.sqrt(deg)
+        return float(total)
+
+    def calc_connectivity_index_chi1(self, molecule, selection) -> float:
+        """Calculate connectivity index (order 1)."""
+        selected_set = self.get_selected_set(selection)
+        total = 0.0
         for bond in molecule.bonds:
             if bond.begin_atom_idx in selected_set and bond.end_atom_idx in selected_set:
                 degree1 = len([n for n in molecule.get_neighbors(bond.begin_atom_idx) if n in selected_set])
                 degree2 = len([n for n in molecule.get_neighbors(bond.end_atom_idx) if n in selected_set])
                 if degree1 > 0 and degree2 > 0:
                     total += 1.0 / np.sqrt(degree1 * degree2)
-        return total / 2.0
-
-    def calc_connectivity_index_chi1(self, molecule, selection) -> float:
-        """Calculate connectivity index (order 1)."""
-        return self.calc_connectivity_index_chi0(molecule, selection)
+        return float(total)
 
     def calc_kappa_shape_index_1(self, molecule, selection) -> float:
         """Calculate Kappa shape index 1."""

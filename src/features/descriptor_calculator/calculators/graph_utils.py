@@ -106,6 +106,11 @@ class SubGraph:
         self._adjacency = None
 
     # ------------------------------------------------------------ basics
+    def rings(self):
+        """Rings in the subgraph."""
+        all_rings = self.molecule.find_rings()
+        return [r for r in all_rings if all(i in self.position for i in r)]
+
     @property
     def n_bonds(self):
         return len(self.edges)

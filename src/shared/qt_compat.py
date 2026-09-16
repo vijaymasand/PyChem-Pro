@@ -367,6 +367,8 @@ except ImportError as e:
                 def emit(self): pass
         class QTreeWidget: pass
         class QTreeWidgetItem: pass
+        class QListWidget(QWidget): pass
+        class QListWidgetItem: pass
         class QAbstractItemView:
             class SelectionMode:
                 SingleSelection = 1
