@@ -14,24 +14,27 @@ def calculate_constitutional(molecule) -> Dict[str, Any]:
     atoms = molecule.atoms
     bonds = molecule.bonds
     
-    num_atoms = len(atoms)
-    num_bonds = len(bonds)
-    
-    results["nAtoms"] = num_atoms
-    results["nBonds"] = num_bonds
-    
     # Element counts
     elements = ['H', 'C', 'N', 'O', 'P', 'S', 'F', 'Cl', 'Br', 'I', 'B', 'Si']
     counts = {el: 0 for el in elements}
     
     heavy_atoms = 0
+    implicit_h_total = 0
     for atom in atoms:
         sym = atom.symbol
         if sym in counts:
             counts[sym] += 1
         if sym != 'H':
             heavy_atoms += 1
+            impl_h = getattr(atom, 'total_h', 0) or 0
+            implicit_h_total += impl_h
             
+    counts['H'] += implicit_h_total
+    num_atoms = len(atoms) + implicit_h_total
+    num_bonds = len(bonds)
+    
+    results["nAtoms"] = num_atoms
+    results["nBonds"] = num_bonds
     results["nHeavyAtoms"] = heavy_atoms
     
     for el in elements:

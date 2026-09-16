@@ -23,3 +23,8 @@ env/
 *.pdbqt
 *.cif
 *.mmcif
+
+cpp/
+pychem/_engine*.pyd
+pychem/_engine*.so
+scratch/

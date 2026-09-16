@@ -1047,14 +1047,17 @@ class DockingPoseVisualizerWidget(QWidget):
                             break
                     
                     off_vec = norm * (off_dist * side)
-                    self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                    l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                    l1.setZValue(3)
                     # Shorten inner line slightly for aesthetics
                     s1 = q1 + (q2 - q1) * 0.15 + off_vec
                     s2 = q2 - (q2 - q1) * 0.15 + off_vec
-                    self.viewer.scene.addLine(s1.x(), s1.y(), s2.x(), s2.y(), bond_pen)
+                    l2 = self.viewer.scene.addLine(s1.x(), s1.y(), s2.x(), s2.y(), bond_pen)
+                    l2.setZValue(3)
                 elif order == 3:
                     # Triple bond (Rare but supported)
-                    self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                    l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                    l1.setZValue(3)
                     diff = q2 - q1
                     norm = QPointF(-diff.y(), diff.x())
                     ilen = math.hypot(norm.x(), norm.y())
@@ -1062,25 +1065,42 @@ class DockingPoseVisualizerWidget(QWidget):
                     off = 4.0
                     for s in [-1, 1]:
                         off_v = norm * (off * s)
-                        self.viewer.scene.addLine(q1.x()+off_v.x(), q1.y()+off_v.y(), q2.x()+off_v.x(), q2.y()+off_v.y(), bond_pen)
+                        l_extra = self.viewer.scene.addLine(q1.x()+off_v.x(), q1.y()+off_v.y(), q2.x()+off_v.x(), q2.y()+off_v.y(), bond_pen)
+                        l_extra.setZValue(3)
                 else:
-                    self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                    l1 = self.viewer.scene.addLine(q1.x(), q1.y(), q2.x(), q2.y(), bond_pen)
+                    l1.setZValue(3)
 
             # Aromatic Rings removed to favor OASA Kekule localization
             pass
 
             # Atom Labels
             for la_idx, (lx, ly) in d_coords.items():
-                sym = self.molecule.atoms[la_idx].symbol
+                atom = self.molecule.atoms[la_idx]
+                sym = atom.symbol
                 if sym != 'C':
-                    txt = QGraphicsTextItem(sym)
-                    txt.setFont(QFont("Segoe UI", 12, QFont.Bold))
+                    # Determine label text with hydrogen count (e.g. NH2, NH, OH)
+                    h_neighbors = [n for n in self.molecule.get_neighbors(la_idx) if self.molecule.atoms[n].symbol == 'H']
+                    h_count = len(h_neighbors)
+                    if h_count == 1:
+                        label_text = f"{sym}H"
+                    elif h_count > 1:
+                        label_text = f"{sym}H{h_count}"
+                    else:
+                        label_text = sym
+
+                    txt = QGraphicsTextItem(label_text)
+                    txt.setFont(QFont("Segoe UI", 11, QFont.Bold))
                     txt.setDefaultTextColor(QColor(ELEMENT_STYLE.get(sym, '#808080')))
                     rect = txt.boundingRect()
                     txt.setPos(lx - rect.width()/2, ly - rect.height()/2)
                     txt.setZValue(5)
-                    # White background for label
-                    bg = self.viewer.scene.addRect(lx - rect.width()/2, ly - rect.height()/2, rect.width(), rect.height(), Qt.NoPen, QBrush(Qt.white))
+                    # White background for label with clean padding
+                    bg = self.viewer.scene.addRect(
+                        lx - rect.width()/2 - 1, ly - rect.height()/2 - 1,
+                        rect.width() + 2, rect.height() + 2,
+                        Qt.NoPen, QBrush(Qt.white)
+                    )
                     bg.setOpacity(0.9)
                     bg.setZValue(4)
                     self.viewer.scene.addItem(txt)

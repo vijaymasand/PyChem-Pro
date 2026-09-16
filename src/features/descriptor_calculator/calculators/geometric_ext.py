@@ -54,9 +54,13 @@ class ExtendedGeometricCalculator(GeometricCalculator):
         if coords is None or len(coords) < 2:
             return None
         centered = coords - coords.mean(axis=0)
-        _, _, axes = np.linalg.svd(centered, full_matrices=False)
-        projections = centered.dot(axes.T)
-        return np.sort(projections.max(axis=0) - projections.min(axis=0))[::-1]
+        _, _, axes = np.linalg.svd(centered, full_matrices=True)
+        projections = centered.dot(axes[:3].T)
+        diff = projections.max(axis=0) - projections.min(axis=0)
+        extent = np.sort(diff)[::-1]
+        if len(extent) < 3:
+            extent = np.pad(extent, (0, 3 - len(extent)), 'constant')
+        return extent
 
     # ------------------------------------------------- moments of inertia
     def calc_inertia_a(self, molecule, selection) -> float:
@@ -103,19 +107,19 @@ class ExtendedGeometricCalculator(GeometricCalculator):
     # ------------------------------------------------------------- extent
     def calc_molecular_length(self, molecule, selection) -> float:
         extent = self._principal_axes_extent(molecule, selection)
-        return float(extent[0]) if extent is not None else 0.0
+        return float(extent[0]) if extent is not None and len(extent) > 0 else 0.0
 
     def calc_molecular_width(self, molecule, selection) -> float:
         extent = self._principal_axes_extent(molecule, selection)
-        return float(extent[1]) if extent is not None else 0.0
+        return float(extent[1]) if extent is not None and len(extent) > 1 else 0.0
 
     def calc_molecular_thickness(self, molecule, selection) -> float:
         extent = self._principal_axes_extent(molecule, selection)
-        return float(extent[2]) if extent is not None else 0.0
+        return float(extent[2]) if extent is not None and len(extent) > 2 else 0.0
 
     def calc_length_to_width_ratio(self, molecule, selection) -> float:
         extent = self._principal_axes_extent(molecule, selection)
-        if extent is None or extent[1] <= 0:
+        if extent is None or len(extent) < 2 or extent[1] <= 0:
             return 0.0
         return float(extent[0] / extent[1])
 
@@ -139,7 +143,7 @@ class ExtendedGeometricCalculator(GeometricCalculator):
         if coords is None or len(coords) < 4:
             return 0.0
         centered = coords - coords.mean(axis=0)
-        _, _, axes = np.linalg.svd(centered, full_matrices=False)
+        _, _, axes = np.linalg.svd(centered, full_matrices=True)
         normal = axes[2]
         return float(np.mean(np.abs(centered.dot(normal))))
 

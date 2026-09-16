@@ -200,6 +200,11 @@ class Molecule:
         """Count non-hydrogen atoms."""
         return sum(1 for a in self.atoms if a.symbol != 'H')
 
+    @property
+    def num_heavy_atoms(self):
+        """Count non-hydrogen atoms (alias for count_heavy_atoms)."""
+        return self.count_heavy_atoms
+
     def propagate_aromaticity(self):
         """
         Mark atoms as aromatic if they are part of an aromatic bond.
