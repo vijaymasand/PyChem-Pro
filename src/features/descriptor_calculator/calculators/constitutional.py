@@ -12,15 +12,14 @@ class ConstitutionalCalculator(BaseCalculator):
     def calc_molecular_weight(self, molecule, selection) -> float:
         """Calculate molecular weight.
 
-        Uses the element masses from the periodic table (so every element
-        contributes, not just a hard coded handful) and adds the hydrogens that
+        Uses the element masses from the periodic table and adds the hydrogens that
         a structure from SMILES only carries implicitly. """
         total_weight = 0.0
         for idx in self.get_selected_atoms(molecule, selection):
             atom = molecule.atoms[idx]
             total_weight += getattr(atom, 'mass', 0.0)
             if atom.symbol != 'H':
-                total_weight += self.count_hydrogens(molecule, idx) * 1.008
+                total_weight += (getattr(atom, 'total_h', 0) or 0) * 1.008
         return total_weight
 
     def count_hydrogens(self, molecule, idx) -> int:
@@ -31,8 +30,11 @@ class ConstitutionalCalculator(BaseCalculator):
         return int(getattr(atom, 'total_h', 0) or 0) + explicit
 
     def calc_atom_count(self, molecule, selection) -> int:
-        """Calculate total atom count."""
-        return len(selection.atom_indices)
+        """Calculate total atom count (explicit atoms + implicit hydrogens)."""
+        chosen = self.get_selected_atoms(molecule, selection)
+        implicit_h = sum((getattr(molecule.atoms[idx], 'total_h', 0) or 0)
+                         for idx in chosen if molecule.atoms[idx].symbol != 'H')
+        return len(chosen) + implicit_h
 
     def calc_heavy_atom_count(self, molecule, selection) -> int:
         """Calculate heavy atom count."""
@@ -117,7 +119,12 @@ class ConstitutionalCalculator(BaseCalculator):
                   if molecule.atoms[idx].symbol in halogens)
 
     def calc_hydrogen_count(self, molecule, selection) -> int:
-        return self.count_atoms_by_symbol(molecule, selection, 'H')
+        """Calculate total hydrogen count (explicit + implicit)."""
+        chosen = self.get_selected_atoms(molecule, selection)
+        explicit_h = sum(1 for idx in chosen if molecule.atoms[idx].symbol == 'H')
+        implicit_h = sum((getattr(molecule.atoms[idx], 'total_h', 0) or 0)
+                         for idx in chosen if molecule.atoms[idx].symbol != 'H')
+        return explicit_h + implicit_h
 
     # Individual halogen counts
     def calc_fluorine_count(self, molecule, selection) -> int:

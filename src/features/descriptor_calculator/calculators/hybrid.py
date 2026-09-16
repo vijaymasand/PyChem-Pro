@@ -27,16 +27,26 @@ class HybridCalculator(BaseCalculator):
         atomic_polarizabilities = {'H': 0.667, 'C': 1.76, 'N': 1.10, 'O': 0.802,
                                   'F': 0.557, 'Cl': 2.18, 'Br': 3.05, 'I': 5.35}
 
-        return sum(atomic_polarizabilities.get(molecule.atoms[idx].symbol, 1.0)
-                  for idx in self.get_selected_atoms(molecule, selection))
+        total = 0.0
+        for idx in self.get_selected_atoms(molecule, selection):
+            atom = molecule.atoms[idx]
+            total += atomic_polarizabilities.get(atom.symbol, 1.0)
+            if atom.symbol != 'H':
+                total += (getattr(atom, 'total_h', 0) or 0) * atomic_polarizabilities.get('H', 0.667)
+        return float(total)
 
     def calc_molar_refractivity(self, molecule, selection) -> float:
         """Calculate molar refractivity."""
         atomic_refractivities = {'H': 1.463, 'C': 2.491, 'N': 2.743, 'O': 1.529,
                                'F': 0.923, 'Cl': 5.607, 'Br': 8.865, 'I': 13.900}
 
-        return sum(atomic_refractivities.get(molecule.atoms[idx].symbol, 2.0)
-                  for idx in self.get_selected_atoms(molecule, selection))
+        total = 0.0
+        for idx in self.get_selected_atoms(molecule, selection):
+            atom = molecule.atoms[idx]
+            total += atomic_refractivities.get(atom.symbol, 2.0)
+            if atom.symbol != 'H':
+                total += (getattr(atom, 'total_h', 0) or 0) * atomic_refractivities.get('H', 1.463)
+        return float(total)
 
 
     def calc_lipinski_hba(self, molecule, selection) -> int:
@@ -147,12 +157,13 @@ class HybridCalculator(BaseCalculator):
 
     def calc_molecular_weight(self, molecule, selection) -> float:
         """Calculate molecular weight."""
-        atomic_weights = {'H': 1.008, 'C': 12.011, 'N': 14.007, 'O': 15.999,
-                        'F': 18.998, 'Cl': 35.453, 'Br': 79.904, 'I': 126.904,
-                        'S': 32.066, 'P': 30.974, 'Si': 28.086}
-
-        return sum(atomic_weights.get(molecule.atoms[idx].symbol, 0.0)
-                  for idx in self.get_selected_atoms(molecule, selection))
+        total_weight = 0.0
+        for idx in self.get_selected_atoms(molecule, selection):
+            atom = molecule.atoms[idx]
+            total_weight += getattr(atom, 'mass', 0.0)
+            if atom.symbol != 'H':
+                total_weight += (getattr(atom, 'total_h', 0) or 0) * 1.008
+        return float(total_weight)
 
     def calc_rotatable_bonds(self, molecule, selection) -> int:
         """Calculate number of rotatable bonds."""
