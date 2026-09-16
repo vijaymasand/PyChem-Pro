@@ -1028,17 +1028,31 @@ class DockingPoseVisualizerWidget(QWidget):
                 if la1_idx not in d_coords or la2_idx not in d_coords: continue
                     
                 p1, p2 = d_coords[la1_idx], d_coords[la2_idx]
-                
-                # Margins for heteroatom label clipping (so bond lines stop cleanly before text)
-                m1 = 12.0 if la1_idx in labeled_atoms else 0.0
-                m2 = 12.0 if la2_idx in labeled_atoms else 0.0
-
                 diff_x, diff_y = p2[0] - p1[0], p2[1] - p1[1]
                 blen = math.hypot(diff_x, diff_y)
+                if blen < 1e-3: continue
+                ux, uy = diff_x / blen, diff_y / blen
+
+                # Dynamic bounding box margin clipping near heteroatom labels (exact connection to bg border)
+                m1 = 0.0
+                if la1_idx in labeled_atoms:
+                    hw = 12.0  # default half-width
+                    hh = 11.0  # default half-height
+                    h_cnt1 = len([n for n in self.molecule.get_neighbors(la1_idx) if self.molecule.atoms[n].symbol == 'H'])
+                    if h_cnt1 > 0: hw = 18.0  # wider box for NH2, NH, OH
+                    m1 = min(abs(hw / (ux if abs(ux) > 1e-6 else 1e-6)), abs(hh / (uy if abs(uy) > 1e-6 else 1e-6)))
+
+                m2 = 0.0
+                if la2_idx in labeled_atoms:
+                    hw = 12.0
+                    hh = 11.0
+                    h_cnt2 = len([n for n in self.molecule.get_neighbors(la2_idx) if self.molecule.atoms[n].symbol == 'H'])
+                    if h_cnt2 > 0: hw = 18.0
+                    m2 = min(abs(hw / (ux if abs(ux) > 1e-6 else 1e-6)), abs(hh / (uy if abs(uy) > 1e-6 else 1e-6)))
+
                 if blen <= (m1 + m2):
                     continue
-                
-                ux, uy = diff_x / blen, diff_y / blen
+
                 sp1 = QPointF(p1[0] + ux * m1, p1[1] + uy * m1)
                 sp2 = QPointF(p2[0] - ux * m2, p2[1] - uy * m2)
 
