@@ -14,8 +14,7 @@
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/vijaymasand)
 
 **Financial support/Sponsorship**
-🎉 Another PyChem-Pro Milestone Update!
-I am incredibly proud to share that PyChem-Pro has received another official financial support from Mr. Dushyanth Reddy Vennapu, Ph.D. Scholar, Central University of Punjab. *Thank you for your generous support!* 
+We are glad to share that PyChem-Pro has received official financial support from Dr. Manoj Sabnani, School of Bioengineering, MIT ADT Pune, India, and Mr. Dushyanth Reddy Vennapu, Ph.D. Scholar, Central University of Punjab. *Thank you for your generous support!*
 
 ---
 

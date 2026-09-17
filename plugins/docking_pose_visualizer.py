@@ -49,9 +49,9 @@ from typing import Dict, List, Tuple, Optional, Any, Set
 from src.shared.qt_compat import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QGroupBox, QFileDialog, QMessageBox, QFormLayout, QSpinBox, 
-    QInputDialog, Qt, QColor, QCheckBox, QDialog,
+    QInputDialog, Qt, QColor, QCheckBox, QDialog, QComboBox,
     QGraphicsView, QGraphicsScene, QGraphicsEllipseItem, 
-    QGraphicsLineItem, QGraphicsTextItem, QPen, QBrush, QFont,
+    QGraphicsLineItem, QGraphicsTextItem, QGraphicsRectItem, QPen, QBrush, QFont,
     QPainter, QImage, QPointF, QRectF, QRect
 )
 from src.shared.ui.theme import COLORS
@@ -252,7 +252,7 @@ class ResidueNodeItem(QGraphicsEllipseItem):
         color: Border color (interaction-type color).
         fill_color: Optional fill color (residue-category color).
     """
-    def __init__(self, x, y, radius, name, res_id, color, fill_color=None):
+    def __init__(self, x, y, radius, name, res_id, color, fill_color=None, text_color=Qt.black, id_color=QColor("#444444"), font_name="Bold", font_id="Plain"):
         super().__init__(-radius, -radius, 2 * radius, 2 * radius)
         self.setPos(x, y)
         
@@ -269,22 +269,22 @@ class ResidueNodeItem(QGraphicsEllipseItem):
         self.setFlag(QGraphicsEllipseItem.ItemIsMovable)
         self.setFlag(QGraphicsEllipseItem.ItemSendsGeometryChanges)
         
-        # Determine text color for readability on the fill
-        text_color = Qt.black
-        id_color = QColor("#444444")
-        
         # Text items
         self.name_text = QGraphicsTextItem(name, self)
         self.id_text = QGraphicsTextItem(res_id, self)
         
         # Style text (Increased size for readability)
-        font = QFont("Segoe UI", 10, QFont.Bold)
+        font = QFont("Segoe UI", 10)
+        if font_name == "Bold": font.setBold(True)
+        elif font_name == "Italic": font.setItalic(True)
         self.name_text.setFont(font)
-        self.name_text.setDefaultTextColor(text_color)
+        self.name_text.setDefaultTextColor(QColor(text_color))
         
         id_font = QFont("Segoe UI", 9)
+        if font_id == "Bold": id_font.setBold(True)
+        elif font_id == "Italic": id_font.setItalic(True)
         self.id_text.setFont(id_font)
-        self.id_text.setDefaultTextColor(id_color)
+        self.id_text.setDefaultTextColor(QColor(id_color))
         
         self.update_text_positions(radius)
         self.line_item = None
@@ -292,31 +292,43 @@ class ResidueNodeItem(QGraphicsEllipseItem):
         self.anchor_pos = None
 
     def update_text_positions(self, radius):
-        # Center name text
         nb = self.name_text.boundingRect()
-        self.name_text.setPos(-nb.width()/2, -radius * 0.4)
-        
-        # Center ID text below name
         ib = self.id_text.boundingRect()
-        self.id_text.setPos(-ib.width()/2, radius * 0.1)
+        
+        total_height = nb.height() + ib.height() - 4
+        start_y = -total_height / 2
+        
+        self.name_text.setPos(-nb.width() / 2, start_y)
+        self.id_text.setPos(-ib.width() / 2, start_y + nb.height() - 4)
 
     def itemChange(self, change, value):
         if change == QGraphicsEllipseItem.ItemPositionHasChanged:
             if self.line_item and self.anchor_pos:
                 # Update connection line
                 line = self.line_item.line()
-                line.setP2(value)
+                
+                # Recalculate angle to anchor_pos
+                dx = value.x() - self.anchor_pos.x()
+                dy = value.y() - self.anchor_pos.y()
+                angle = math.atan2(dy, dx)
+                
+                # Stop at periphery
+                radius = self.rect().width() / 2
+                rx_edge = value.x() - radius * math.cos(angle)
+                ry_edge = value.y() - radius * math.sin(angle)
+                
+                line.setP2(QPointF(rx_edge, ry_edge))
                 self.line_item.setLine(line)
                 
                 # Update distance label position if NOT manually moved
                 if self.label_item and not self.label_item.manually_moved:
-                    mid = (self.anchor_pos + value) / 2
+                    mid = (self.anchor_pos + QPointF(rx_edge, ry_edge)) / 2
                     self.label_item.setPos(mid - self.label_item.boundingRect().center())
         return super().itemChange(change, value)
 
 class DistanceLabelItem(QGraphicsTextItem):
     """Draggable text item for distance labels with relative positioning."""
-    def __init__(self, text, color, font):
+    def __init__(self, text, color, font, bg_color=Qt.white):
         super().__init__(text)
         self.setDefaultTextColor(QColor(color))
         self.setFont(font)
@@ -324,6 +336,27 @@ class DistanceLabelItem(QGraphicsTextItem):
         self.setFlag(QGraphicsTextItem.ItemIsMovable)
         self.setFlag(QGraphicsTextItem.ItemSendsGeometryChanges)
         self.manually_moved = False
+        
+        # Add background rect as a child
+        self.bg = QGraphicsRectItem(self)
+        self.bg.setBrush(QBrush(QColor(bg_color)))
+        self.bg.setPen(Qt.NoPen)
+        self.bg.setFlag(QGraphicsTextItem.ItemStacksBehindParent)
+        self.bg.setOpacity(0.9)
+        self._update_bg()
+
+    def setFont(self, font):
+        super().setFont(font)
+        self._update_bg()
+            
+    def setPlainText(self, text):
+        super().setPlainText(text)
+        self._update_bg()
+
+    def _update_bg(self):
+        if hasattr(self, 'bg'):
+            rect = self.boundingRect()
+            self.bg.setRect(rect.adjusted(-2, -1, 2, 1))
 
     def mouseMoveEvent(self, event):
         self.manually_moved = True
@@ -334,13 +367,15 @@ class VisualizerSettingsDialog(QDialog):
     def __init__(self, parent):
         super().__init__(parent)
         self.setWindowTitle("Visualization Options")
-        self.setFixedWidth(320)
+        self.setFixedWidth(550)
         self.parent_widget = parent
         self._setup_ui()
         self.setStyleSheet(f"background-color: {COLORS['bg_secondary']}; color: white;")
 
     def _setup_ui(self):
-        lay = QVBoxLayout(self)
+        main_lay = QHBoxLayout(self)
+        col1 = QVBoxLayout()
+        col2 = QVBoxLayout()
         
         # Rendering Settings
         g_set = QGroupBox("RENDERING")
@@ -350,16 +385,47 @@ class VisualizerSettingsDialog(QDialog):
         self.parent_widget.sp_node.setParent(self)
         self.parent_widget.sp_inner_fsize.setParent(self)
         self.parent_widget.sp_dist_fsize.setParent(self)
+        self.parent_widget.sp_ligand_fsize.setParent(self)
         self.parent_widget.sp_max_res.setParent(self)
         self.parent_widget.sp_dist_cutoff.setParent(self)
         
         flay.addRow("Node Size:", self.parent_widget.sp_node)
         flay.addRow("Inner Font:", self.parent_widget.sp_inner_fsize)
         flay.addRow("Distance Font:", self.parent_widget.sp_dist_fsize)
+        flay.addRow("Ligand Font:", self.parent_widget.sp_ligand_fsize)
         flay.addRow("Max Residues:", self.parent_widget.sp_max_res)
         flay.addRow("Cutoff (Å):", self.parent_widget.sp_dist_cutoff)
+        
+        # Color & Font settings
+        colors = {"Default": "", "Black": "#000000", "White": "#FFFFFF", "Red": "#FF0000", "Blue": "#0000FF", "Green": "#008000", "Orange": "#FFA500", "Purple": "#800080", "Gray": "#808080"}
+        font_styles = ["Plain", "Bold", "Italic"]
+        
+        def create_combo(target, is_font=False):
+            cb = QComboBox()
+            if is_font:
+                cb.addItems(font_styles)
+                current = getattr(self.parent_widget, f"font_{target}")
+                cb.setCurrentText(current if current in font_styles else "Bold")
+                cb.currentTextChanged.connect(lambda text: setattr(self.parent_widget, f"font_{target}", text) or self.parent_widget.auto_render(silent=True))
+            else:
+                cb.addItems(list(colors.keys()))
+                current = getattr(self.parent_widget, f"color_{target}")
+                for k, v in colors.items():
+                    if v == current:
+                        cb.setCurrentText(k)
+                        break
+                cb.currentTextChanged.connect(lambda text: setattr(self.parent_widget, f"color_{target}", colors[text]) or self.parent_widget.auto_render(silent=True))
+            return cb
+                
+        flay.addRow("AA Name Color:", create_combo("name"))
+        flay.addRow("AA Name Style:", create_combo("name", True))
+        flay.addRow("AA ID Color:", create_combo("id"))
+        flay.addRow("AA ID Style:", create_combo("id", True))
+        flay.addRow("Distance Color:", create_combo("dist"))
+        flay.addRow("Distance Style:", create_combo("dist", True))
+        
         g_set.setLayout(flay)
-        lay.addWidget(g_set)
+        col1.addWidget(g_set)
         
         # Interaction Filters
         filter_box = QGroupBox("FILTERS")
@@ -368,7 +434,7 @@ class VisualizerSettingsDialog(QDialog):
         for itype, cb in self.parent_widget.filter_checks.items():
             vlay.addWidget(cb)
         filter_box.setLayout(vlay)
-        lay.addWidget(filter_box)
+        col1.addWidget(filter_box)
         
         # Legend (Mini) — Interaction Types
         legend_box = QGroupBox("INTERACTIONS")
@@ -382,7 +448,7 @@ class VisualizerSettingsDialog(QDialog):
             lbl = QLabel(f"<span style='color:{color};'>●</span> <b>{name}</b> ({desc})")
             llay.addWidget(lbl)
         legend_box.setLayout(llay)
-        lay.addWidget(legend_box)
+        col2.addWidget(legend_box)
         
         # Legend — Residue Categories (fill colors)
         res_legend_box = QGroupBox("RESIDUE TYPES")
@@ -402,12 +468,15 @@ class VisualizerSettingsDialog(QDialog):
             lbl = QLabel(f"<span style='color:{cat_color};'>■</span> <b>{cat_name}</b> <span style='font-size:9px;'>{cat_desc}</span>")
             rlay.addWidget(lbl)
         res_legend_box.setLayout(rlay)
-        lay.addWidget(res_legend_box)
+        col2.addWidget(res_legend_box)
         
         btn_close = QPushButton("APPLY & CLOSE")
         btn_close.setStyleSheet(f"background-color: {COLORS['accent']}; color: white; font-weight: bold; padding: 10px; border-radius: 6px;")
         btn_close.clicked.connect(self.accept)
-        lay.addWidget(btn_close)
+        col2.addWidget(btn_close)
+        
+        main_lay.addLayout(col1)
+        main_lay.addLayout(col2)
 
 class QtPoseViewer(QGraphicsView):
     """Native Qt Graphics View for docking pose visualization."""
@@ -608,6 +677,10 @@ class DockingPoseVisualizerWidget(QWidget):
         self.sp_dist_fsize.setRange(6, 24)
         self.sp_dist_fsize.setValue(11)
         
+        self.sp_ligand_fsize = QSpinBox()
+        self.sp_ligand_fsize.setRange(6, 36)
+        self.sp_ligand_fsize.setValue(14)
+        
         self.sp_max_res = QSpinBox()
         self.sp_max_res.setRange(5, 150)
         self.sp_max_res.setValue(30)
@@ -615,6 +688,14 @@ class DockingPoseVisualizerWidget(QWidget):
         self.sp_dist_cutoff = QSpinBox()
         self.sp_dist_cutoff.setRange(3, 15)
         self.sp_dist_cutoff.setValue(5)
+        
+        self.color_name = "#000000"
+        self.color_id = "#444444"
+        self.color_dist = "" # Empty means use interaction color
+        
+        self.font_name = "Bold"
+        self.font_id = "Plain"
+        self.font_dist = "Bold"
         
         self.filter_checks = {}
         for itype in ["H-Bond", "Hydrophobic", "Salt Bridge", "Contact"]:
@@ -1183,7 +1264,7 @@ class DockingPoseVisualizerWidget(QWidget):
                         label_text = sym
 
                     txt = QGraphicsTextItem(label_text)
-                    txt.setFont(QFont("Segoe UI", 11, QFont.Bold))
+                    txt.setFont(QFont("Segoe UI", self.sp_ligand_fsize.value(), QFont.Bold))
                     txt.setDefaultTextColor(QColor(ELEMENT_STYLE.get(sym, '#808080')))
                     rect = txt.boundingRect()
                     txt.setPos(lx - rect.width()/2, ly - rect.height()/2)
@@ -1232,31 +1313,40 @@ class DockingPoseVisualizerWidget(QWidget):
 
                 # Interaction Line
                 line_pen = QPen(QColor(style['c']), 1.5, style['s'])
-                line = self.viewer.scene.addLine(sx, sy, rx, ry, line_pen)
+                
+                # Stop line at the periphery of the node
+                rx_edge = rx - node_radius * math.cos(angle)
+                ry_edge = ry - node_radius * math.sin(angle)
+                
+                line = self.viewer.scene.addLine(sx, sy, rx_edge, ry_edge, line_pen)
                 line.setZValue(1)
-                line.setOpacity(0.6)
+                line.setOpacity(1.0)
 
-                # Distance Label (Now Draggable, with white background for readability)
+                # Distance Label (Now Draggable, with self-contained background)
+                dist_color = self.color_dist if getattr(self, 'color_dist', "") else style['c']
+                
+                dist_font = QFont("JetBrains Mono", self.sp_dist_fsize.value())
+                f_dist_style = getattr(self, 'font_dist', "Bold")
+                if f_dist_style == "Bold": dist_font.setBold(True)
+                elif f_dist_style == "Italic": dist_font.setItalic(True)
+                
                 dist_txt = DistanceLabelItem(
                     f"{d['dist']}Å", 
-                    style['c'], 
-                    QFont("JetBrains Mono", self.sp_dist_fsize.value(), QFont.Bold)
+                    dist_color, 
+                    dist_font
                 )
                 dr = dist_txt.boundingRect()
-                mid_x, mid_y = (sx+rx)/2, (sy+ry)/2
+                mid_x, mid_y = (sx+rx_edge)/2, (sy+ry_edge)/2
                 dist_txt.setPos(mid_x - dr.width()/2, mid_y - dr.height()/2)
-                # White background behind distance label for readability
-                lbl_bg = self.viewer.scene.addRect(
-                    mid_x - dr.width()/2 - 2, mid_y - dr.height()/2 - 1,
-                    dr.width() + 4, dr.height() + 2,
-                    Qt.NoPen, QBrush(Qt.white)
-                )
-                lbl_bg.setOpacity(0.85)
-                lbl_bg.setZValue(14)
                 self.viewer.scene.addItem(dist_txt)
 
                 # Residue Node (with category fill color)
-                node = ResidueNodeItem(rx, ry, node_radius, d['name'], d['id'], style['c'], fill_color)
+                c_name = getattr(self, 'color_name', Qt.black)
+                c_id = getattr(self, 'color_id', "#444444")
+                f_name = getattr(self, 'font_name', "Bold")
+                f_id = getattr(self, 'font_id', "Plain")
+                
+                node = ResidueNodeItem(rx, ry, node_radius, d['name'], d['id'], style['c'], fill_color, text_color=c_name, id_color=c_id, font_name=f_name, font_id=f_id)
                 node.line_item = line
                 node.label_item = dist_txt
                 node.anchor_pos = QPointF(sx, sy)

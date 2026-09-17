@@ -24,20 +24,7 @@ env/
 *.cif
 *.mmcif
 
-# --- C++ engine (cpp/) ---
-# The broad `tests/` and `*.bat` rules above are aimed at the repository root.
-# They also match cpp/tests/ and cpp/tools/msvc.bat at depth, which would drop
-# the C++ unit-test suite and the MSVC build wrapper from version control.
-# Re-include them explicitly. The directory itself has to be un-excluded first:
-# git will not descend into an excluded directory to find re-included files.
-!cpp/tests/
-!cpp/tests/**
-!cpp/tools/*.bat
-
-# Built Python extension. Produced by `python cpp/tools/build.py extension`
-# and specific to one interpreter version and platform, so it is never
-# committed -- the EXT_SUFFIX in the name (.cp312-win_amd64) is what stops
-# Python from importing a module built for a different version.
+cpp/
 pychem/_engine*.pyd
 pychem/_engine*.so
 scratch/
