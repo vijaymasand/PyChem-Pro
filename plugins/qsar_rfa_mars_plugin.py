@@ -41,7 +41,8 @@ from src.shared.qt_compat import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QTextEdit, QProgressBar,
     QFileDialog, QMessageBox, QComboBox, Qt, QThread, Signal,
-    QTabWidget, QCheckBox, QSpinBox, QSplitter, QGroupBox, QListWidget, QListWidgetItem
+    QTabWidget, QCheckBox, QSpinBox, QSplitter, QGroupBox, QListWidget, QListWidgetItem,
+    QDialog
 )
 from src.plugins.base_plugin import BasePlugin, PluginWidget
 from src.plugins.plugin_types import PluginInfo, PluginType
@@ -647,7 +648,9 @@ class QsarRfaWidget(PluginWidget):
         
         splitter.addWidget(right_panel)
         splitter.setSizes([450, 750])
-        
+        self.splitter = splitter  # keep reference for popout/restore
+        self._active_popout = None
+
         # Top Bar with window controls
         top_bar = QHBoxLayout()
         top_bar.addStretch()
@@ -655,7 +658,7 @@ class QsarRfaWidget(PluginWidget):
         self.btn_maximize.clicked.connect(self.toggle_maximize)
         top_bar.addWidget(self.btn_maximize)
         self.btn_fullscreen = QPushButton("Full Screen")
-        self.btn_fullscreen.clicked.connect(lambda: self.widget.showFullScreen())
+        self.btn_fullscreen.clicked.connect(lambda: self._open_popout(fullscreen=True))
         top_bar.addWidget(self.btn_fullscreen)
         self.btn_close = QPushButton("Close")
         self.btn_close.clicked.connect(self.widget.close)
@@ -935,11 +938,39 @@ Warning h* : {m['Warning_Lev']:.4f}
             self.tbl_test.setItem(self.tbl_test.rowCount() - 1, 0, item)
 
 
-    def toggle_maximize(self):
-        if self.widget.isMaximized():
-            self.widget.showNormal()
+    def _open_popout(self, fullscreen: bool = False) -> None:
+        """Open the plugin UI in a separate resizable dialog window."""
+        if getattr(self, '_active_popout', None) is not None:
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+            return
+
+        dialog = QDialog()
+        dialog.setWindowTitle("RFA + MARS QSAR")
+        dialog.setWindowFlags(Qt.Window)
+        vbox = QVBoxLayout(dialog)
+        vbox.setContentsMargins(4, 4, 4, 4)
+
+        # Reparent the main splitter content into the dialog
+        self.splitter.setParent(dialog)
+        vbox.addWidget(self.splitter)
+
+        dialog.finished.connect(self._restore_from_popout)
+        self._active_popout = dialog
+
+        if fullscreen:
+            dialog.showFullScreen()
         else:
-            self.widget.showMaximized()
+            dialog.showMaximized()
+
+    def _restore_from_popout(self) -> None:
+        """Restore the splitter back into the embedded widget after dialog closes."""
+        self.splitter.setParent(self.widget)
+        self.widget.layout().addWidget(self.splitter)
+        self._active_popout = None
+
+    def toggle_maximize(self):
+        self._open_popout(fullscreen=False)
 
     def export_results(self):
         if self.result_cache is None: return
