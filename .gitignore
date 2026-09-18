@@ -28,3 +28,10 @@ cpp/
 pychem/_engine*.pyd
 pychem/_engine*.so
 scratch/
+
+# -----------------------------------------------------------------------
+# PERMANENTLY REMOVED PLUGINS — do not re-add or track these ever again
+# -----------------------------------------------------------------------
+plugins/umadock_for_pychem_pro.py
+plugins/UMADock_for_PyChem_pro/
+plugins/PyChem-Dock/
