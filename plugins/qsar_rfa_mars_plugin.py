@@ -14,7 +14,7 @@ Features:
 import math
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import os
 
 from sklearn.model_selection import KFold, cross_val_score, cross_val_predict, LeaveOneOut
 from sklearn.linear_model import LinearRegression, Lasso, Ridge
@@ -34,13 +34,15 @@ except ImportError:
 
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 
 # Strictly using ONLY the allowed imports from qt_compat
 from src.shared.qt_compat import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QTextEdit, QProgressBar,
     QFileDialog, QMessageBox, QComboBox, Qt, QThread, Signal,
-    QTabWidget, QCheckBox, QSpinBox, QSplitter, QGroupBox, QListWidget, QListWidgetItem
+    QTabWidget, QCheckBox, QSpinBox, QSplitter, QGroupBox, QListWidget, QListWidgetItem,
+    QDialog
 )
 from src.plugins.base_plugin import BasePlugin, PluginWidget
 from src.plugins.plugin_types import PluginInfo, PluginType
@@ -496,6 +498,17 @@ class QsarRfaWidget(PluginWidget):
         split_layout.addWidget(self.tbl_train)
         left_layout.addLayout(split_layout)
 
+        # Buttons to load pre-split CSV files
+        load_split_layout = QHBoxLayout()
+        self.btn_load_train = QPushButton("Load Train Split CSV")
+        self.btn_load_train.clicked.connect(self.load_train_split)
+        self.btn_load_test = QPushButton("Load Test Split CSV")
+        self.btn_load_test.clicked.connect(self.load_test_split)
+        load_split_layout.addWidget(self.btn_load_train)
+        load_split_layout.addWidget(self.btn_load_test)
+        load_split_layout.addStretch()
+        left_layout.addLayout(load_split_layout)
+
         auto_layout = QHBoxLayout()
         
         auto_layout.addWidget(QLabel("Train %:"))
@@ -635,40 +648,58 @@ class QsarRfaWidget(PluginWidget):
         
         splitter.addWidget(right_panel)
         splitter.setSizes([450, 750])
-        
+        self.splitter = splitter  # keep reference for popout/restore
+        self._active_popout = None
+
+        # Top Bar with window controls
+        top_bar = QHBoxLayout()
+        top_bar.addStretch()
+        self.btn_maximize = QPushButton("Maximize")
+        self.btn_maximize.clicked.connect(self.toggle_maximize)
+        top_bar.addWidget(self.btn_maximize)
+        self.btn_fullscreen = QPushButton("Full Screen")
+        self.btn_fullscreen.clicked.connect(lambda: self._open_popout(fullscreen=True))
+        top_bar.addWidget(self.btn_fullscreen)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.widget.close)
+        top_bar.addWidget(self.btn_close)
+        main_layout.addLayout(top_bar)
+
+        # Add the splitter (left + right panels) to the main layout
         main_layout.addWidget(splitter)
 
-    def load_data(self):
-        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Dataset", "", "CSV Files (*.csv)")
-        if not path: return
+
+    def load_train_split(self):
+        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Train Split CSV", "", "CSV Files (*.csv)")
+        if not path:
+            return
         try:
-            self.dataset = pd.read_csv(path, sep=None, engine='python')
-            clean_name = path.replace("\\", "/").split("/")[-1]
-            self.lbl_file.setText(clean_name)
-
-            ids = sorted(list(self.dataset.iloc[:, 0]))
-            self.tbl_test.setRowCount(len(ids))
-            self.tbl_train.setRowCount(0)
+            df = pd.read_csv(path, sep=None, engine='python')
+            ids = sorted(list(df.iloc[:, 0]))
+            self.tbl_train.setRowCount(len(ids))
             for i, val in enumerate(ids):
-                self.tbl_test.setItem(i, 0, QTableWidgetItem(str(val)))
-
-            self.txt_log.append(f"Loaded {len(ids)} compounds. Assuming Col 1=ID, Col 2=Activity.")
+                self.tbl_train.setItem(i, 0, QTableWidgetItem(str(val)))
+            self.txt_log.append(f"Loaded {len(ids)} training IDs from {path.split('/')[-1]}")
         except Exception as e:
             QMessageBox.critical(self.widget, "Load Error", str(e))
 
-    def move_to_train(self):
-        for item in self.tbl_test.selectedItems():
-            row = self.tbl_train.rowCount()
-            self.tbl_train.insertRow(row)
-            self.tbl_train.setItem(row, 0, QTableWidgetItem(item.text()))
-            self.tbl_test.removeRow(item.row())
+    def load_test_split(self):
+        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Test Split CSV", "", "CSV Files (*.csv)")
+        if not path:
+            return
+        try:
+            df = pd.read_csv(path, sep=None, engine='python')
+            ids = sorted(list(df.iloc[:, 0]))
+            self.tbl_test.setRowCount(len(ids))
+            for i, val in enumerate(ids):
+                self.tbl_test.setItem(i, 0, QTableWidgetItem(str(val)))
+            self.txt_log.append(f"Loaded {len(ids)} test IDs from {path.split('/')[-1]}")
+        except Exception as e:
+            QMessageBox.critical(self.widget, "Load Error", str(e))
 
-    def move_to_test(self):
-        for item in self.tbl_train.selectedItems():
-            row = self.tbl_test.rowCount()
-            self.tbl_test.insertRow(row)
-            self.tbl_test.setItem(row, 0, QTableWidgetItem(item.text()))
-            self.tbl_train.removeRow(item.row())
+
+
+
 
     def auto_split(self):
         if self.dataset is None: return
@@ -871,6 +902,75 @@ Warning h* : {m['Warning_Lev']:.4f}
         self.canvas_heatmap.fig.tight_layout()
         self.canvas_heatmap.clear_interactive_data()
         self.canvas_heatmap.draw()
+
+    def load_data(self):
+        """Load the main dataset CSV and store in self.dataset."""
+        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Dataset CSV", "", "CSV Files (*.csv)")
+        if not path:
+            return
+        try:
+            df = pd.read_csv(path, sep=None, engine='python')
+            self.dataset = df
+            self.lbl_file.setText(os.path.basename(path))
+            self.txt_log.append(f"Loaded dataset with {df.shape[0]} rows from {os.path.basename(path)}")
+        except Exception as e:
+            QMessageBox.critical(self.widget, "Load Error", str(e))
+    def move_to_train(self):
+        """Move selected IDs from the Test table to the Train table."""
+        selected_items = self.tbl_test.selectedItems()
+        if not selected_items:
+            return
+        rows = sorted({item.row() for item in selected_items}, reverse=True)
+        for row in rows:
+            item = self.tbl_test.takeItem(row, 0)
+            self.tbl_train.insertRow(self.tbl_train.rowCount())
+            self.tbl_train.setItem(self.tbl_train.rowCount() - 1, 0, item)
+
+    def move_to_test(self):
+        """Move selected IDs from the Train table to the Test table."""
+        selected_items = self.tbl_train.selectedItems()
+        if not selected_items:
+            return
+        rows = sorted({item.row() for item in selected_items}, reverse=True)
+        for row in rows:
+            item = self.tbl_train.takeItem(row, 0)
+            self.tbl_test.insertRow(self.tbl_test.rowCount())
+            self.tbl_test.setItem(self.tbl_test.rowCount() - 1, 0, item)
+
+
+    def _open_popout(self, fullscreen: bool = False) -> None:
+        """Open the plugin UI in a separate resizable dialog window."""
+        if getattr(self, '_active_popout', None) is not None:
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+            return
+
+        dialog = QDialog()
+        dialog.setWindowTitle("RFA + MARS QSAR")
+        dialog.setWindowFlags(Qt.Window)
+        vbox = QVBoxLayout(dialog)
+        vbox.setContentsMargins(4, 4, 4, 4)
+
+        # Reparent the main splitter content into the dialog
+        self.splitter.setParent(dialog)
+        vbox.addWidget(self.splitter)
+
+        dialog.finished.connect(self._restore_from_popout)
+        self._active_popout = dialog
+
+        if fullscreen:
+            dialog.showFullScreen()
+        else:
+            dialog.showMaximized()
+
+    def _restore_from_popout(self) -> None:
+        """Restore the splitter back into the embedded widget after dialog closes."""
+        self.splitter.setParent(self.widget)
+        self.widget.layout().addWidget(self.splitter)
+        self._active_popout = None
+
+    def toggle_maximize(self):
+        self._open_popout(fullscreen=False)
 
     def export_results(self):
         if self.result_cache is None: return
