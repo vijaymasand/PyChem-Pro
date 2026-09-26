@@ -149,7 +149,25 @@ class Batch3DConverterWidget(QWidget):
         self._setup_ui()
         
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        
+        top_bar = QHBoxLayout()
+        top_bar.addStretch()
+        self.btn_maximize = QPushButton('Maximize')
+        self.btn_maximize.clicked.connect(self.toggle_maximize)
+        top_bar.addWidget(self.btn_maximize)
+        self.btn_fullscreen = QPushButton('Full Screen')
+        self.btn_fullscreen.clicked.connect(lambda: self._open_popout(fullscreen=True))
+        top_bar.addWidget(self.btn_fullscreen)
+        self.btn_close = QPushButton('Close')
+        self.btn_close.clicked.connect(self.close)
+        top_bar.addWidget(self.btn_close)
+        outer_layout.addLayout(top_bar)
+        
+        self.main_content_widget = QWidget()
+        outer_layout.addWidget(self.main_content_widget)
+        
+        layout = QVBoxLayout(self.main_content_widget)
         
         # Title
         title = QLabel("Batch SMILES to 3D Converter")
@@ -283,6 +301,44 @@ class Batch3DConverterWidget(QWidget):
         if self.worker and self.worker.isRunning():
             self.worker.stop()
             self.worker.wait(2000)
+
+    def _open_popout(self, fullscreen: bool = False) -> None:
+        if getattr(self, '_active_popout', None) is not None:
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+            return
+        
+        try:
+            from src.shared.qt_compat import QDialog, QVBoxLayout, Qt
+        except:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            from PySide6.QtCore import Qt
+
+        dialog = QDialog()
+        dialog.setWindowTitle('Plugin')
+        dialog.setWindowFlags(Qt.Window)
+        vbox = QVBoxLayout(dialog)
+        vbox.setContentsMargins(4, 4, 4, 4)
+
+        self.main_content_widget.setParent(dialog)
+        vbox.addWidget(self.main_content_widget)
+
+        dialog.finished.connect(self._restore_from_popout)
+        self._active_popout = dialog
+
+        if fullscreen:
+            dialog.showFullScreen()
+        else:
+            dialog.showMaximized()
+
+    def _restore_from_popout(self) -> None:
+        w = getattr(self, 'widget', self)
+        self.main_content_widget.setParent(w)
+        w.layout().addWidget(self.main_content_widget)
+        self._active_popout = None
+
+    def toggle_maximize(self):
+        self._open_popout(fullscreen=False)
 
 class Batch3DConverterPlugin(BasePlugin):
     def __init__(self):

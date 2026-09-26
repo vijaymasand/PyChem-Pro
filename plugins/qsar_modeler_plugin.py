@@ -60,6 +60,7 @@ except ImportError:
 
 # Strictly using ONLY the imports allowed by the host application's qt_compat
 from src.shared.qt_compat import (
+    QDialog,
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QTextEdit, QProgressBar,
     QFileDialog, QMessageBox, QComboBox, Qt, QThread, Signal
@@ -488,7 +489,24 @@ class QsarModelerWidget(PluginWidget):
 
     def setup_ui(self):
         self.widget = QWidget()
-        main_layout = QVBoxLayout(self.widget)
+        _base_layout = QVBoxLayout(self.widget)
+        
+        _top_bar = QHBoxLayout()
+        _top_bar.addStretch()
+        self.btn_maximize = QPushButton("Maximize")
+        self.btn_maximize.clicked.connect(self.toggle_maximize)
+        _top_bar.addWidget(self.btn_maximize)
+        self.btn_fullscreen = QPushButton("Full Screen")
+        self.btn_fullscreen.clicked.connect(lambda: self._open_popout(fullscreen=True))
+        _top_bar.addWidget(self.btn_fullscreen)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.widget.close)
+        _top_bar.addWidget(self.btn_close)
+        _base_layout.addLayout(_top_bar)
+        
+        self.main_content_widget = QWidget()
+        _base_layout.addWidget(self.main_content_widget)
+        main_layout = QVBoxLayout(self.main_content_widget)
 
         # --- 1 & 2. Data Loading & Variable Setup (Horizontal Layout) ---
         top_layout = QHBoxLayout()
@@ -895,6 +913,39 @@ class QsarModelerWidget(PluginWidget):
 
         self.txt_log.append(f"Plots saved to {directory}")
         QMessageBox.information(self.widget, "Export Successful", f"Plots successfully saved to:\n{directory}")
+
+
+
+    def _open_popout(self, fullscreen: bool = False) -> None:
+        if getattr(self, '_active_popout', None) is not None:
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+            return
+
+        dialog = QDialog()
+        dialog.setWindowTitle("Plugin")
+        dialog.setWindowFlags(Qt.Window)
+        vbox = QVBoxLayout(dialog)
+        vbox.setContentsMargins(4, 4, 4, 4)
+
+        self.main_content_widget.setParent(dialog)
+        vbox.addWidget(self.main_content_widget)
+
+        dialog.finished.connect(self._restore_from_popout)
+        self._active_popout = dialog
+
+        if fullscreen:
+            dialog.showFullScreen()
+        else:
+            dialog.showMaximized()
+
+    def _restore_from_popout(self) -> None:
+        self.main_content_widget.setParent(self.widget)
+        self.widget.layout().addWidget(self.main_content_widget)
+        self._active_popout = None
+
+    def toggle_maximize(self):
+        self._open_popout(fullscreen=False)
 
 
 class QsarModelerPlugin(BasePlugin):

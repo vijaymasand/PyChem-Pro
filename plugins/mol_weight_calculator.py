@@ -43,7 +43,25 @@ class MolWeightWidget(PluginWidget):
     def setup_ui(self):
         """Setup the user interface."""
         self.widget = QWidget()
-        layout = QVBoxLayout(self.widget)
+        _base_layout = QVBoxLayout(self.widget)
+        
+        _top_bar = QHBoxLayout()
+        _top_bar.addStretch()
+        self.btn_maximize = QPushButton("Maximize")
+        self.btn_maximize.clicked.connect(self.toggle_maximize)
+        _top_bar.addWidget(self.btn_maximize)
+        self.btn_fullscreen = QPushButton("Full Screen")
+        self.btn_fullscreen.clicked.connect(lambda: self._open_popout(fullscreen=True))
+        _top_bar.addWidget(self.btn_fullscreen)
+        self.btn_close = QPushButton("Close")
+        self.btn_close.clicked.connect(self.widget.close)
+        _top_bar.addWidget(self.btn_close)
+        _base_layout.addLayout(_top_bar)
+        
+        self.main_content_widget = QWidget()
+        _base_layout.addWidget(self.main_content_widget)
+        
+        layout = QVBoxLayout(self.main_content_widget)
 
         # Title
         title = QLabel("Molecular Weight Calculator")
@@ -251,6 +269,44 @@ class MolWeightWidget(PluginWidget):
             self.element_table.setRowCount(0)
             self.update_ui_state(False)
 
+
+    def _open_popout(self, fullscreen: bool = False) -> None:
+        if getattr(self, '_active_popout', None) is not None:
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+            return
+        
+        try:
+            from src.shared.qt_compat import QDialog, QVBoxLayout, Qt
+        except:
+            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            from PySide6.QtCore import Qt
+
+        dialog = QDialog()
+        dialog.setWindowTitle('Plugin')
+        dialog.setWindowFlags(Qt.Window)
+        vbox = QVBoxLayout(dialog)
+        vbox.setContentsMargins(4, 4, 4, 4)
+
+        self.main_content_widget.setParent(dialog)
+        vbox.addWidget(self.main_content_widget)
+
+        dialog.finished.connect(self._restore_from_popout)
+        self._active_popout = dialog
+
+        if fullscreen:
+            dialog.showFullScreen()
+        else:
+            dialog.showMaximized()
+
+    def _restore_from_popout(self) -> None:
+        w = getattr(self, 'widget', self)
+        self.main_content_widget.setParent(w)
+        w.layout().addWidget(self.main_content_widget)
+        self._active_popout = None
+
+    def toggle_maximize(self):
+        self._open_popout(fullscreen=False)
 
 class MolWeightCalculatorPlugin(BasePlugin):
     """
