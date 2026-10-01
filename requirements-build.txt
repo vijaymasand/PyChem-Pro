@@ -1,0 +1,2 @@
+nuitka>=2.0
+dmgbuild>=1.6; sys_platform == "darwin"

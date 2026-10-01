@@ -1,0 +1,37 @@
+
+docs/
+testing/
+tests/
+Prompts.txt
+*.bat
+*.mol2
+*.pdb
+*.pyc
+__pycache__/
+*.sdf
+graphify-out/
+.DS_Store
+.graphifyignore
+dist/
+build/
+*.build/
+*.dist/
+*.onefile-build/
+venv/
+.venv/
+env/
+*.pdbqt
+*.cif
+*.mmcif
+
+cpp/
+pychem/_engine*.pyd
+pychem/_engine*.so
+scratch/
+
+# -----------------------------------------------------------------------
+# PERMANENTLY REMOVED PLUGINS — do not re-add or track these ever again
+# -----------------------------------------------------------------------
+plugins/umadock_for_pychem_pro.py
+plugins/UMADock_for_PyChem_pro/
+plugins/PyChem-Dock/

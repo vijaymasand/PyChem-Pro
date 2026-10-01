@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PyChem icon">
+  <title>PyChem</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="ringInk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E5E7EB"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </linearGradient>
+    <radialGradient id="nAtom" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#93C5FD"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </radialGradient>
+    <radialGradient id="cAtom" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#F1F5F9"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="104" fill="url(#bg)"/>
+
+  <g transform="translate(256 260)">
+    <g fill="none" stroke="url(#ringInk)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="0,-148 128.17,-74 128.17,74 0,148 -128.17,74 -128.17,-74"/>
+    </g>
+
+    <g fill="none" stroke="url(#ringInk)" stroke-width="10" stroke-linecap="round" opacity="0.9">
+      <line x1="90" y1="-110" x2="90" y2="-38"/>
+      <line x1="-90" y1="-110" x2="-90" y2="-38"/>
+      <line x1="0" y1="112" x2="0" y2="40"/>
+    </g>
+
+    <circle r="62" fill="none" stroke="#60A5FA" stroke-width="6" opacity="0.35"/>
+
+    <g stroke="#0F172A" stroke-width="3">
+      <circle cx="128.17" cy="-74" r="18" fill="url(#cAtom)"/>
+      <circle cx="128.17" cy="74"  r="18" fill="url(#cAtom)"/>
+      <circle cx="0"      cy="148" r="18" fill="url(#cAtom)"/>
+      <circle cx="-128.17" cy="74"  r="18" fill="url(#cAtom)"/>
+      <circle cx="-128.17" cy="-74" r="18" fill="url(#cAtom)"/>
+      <circle cx="0" cy="-148" r="26" fill="url(#nAtom)"/>
+    </g>
+
+    <text x="0" y="-140" text-anchor="middle" font-family="-apple-system, Inter, 'Segoe UI', sans-serif" font-size="22" font-weight="700" fill="#EFF6FF" letter-spacing="1">N</text>
+  </g>
+</svg>

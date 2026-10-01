@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-label="PyChem">
+  <title>PyChem</title>
+  <defs>
+    <linearGradient id="ringInkLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#334155"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <radialGradient id="nAtomLight" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#93C5FD"/>
+      <stop offset="0.55" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </radialGradient>
+    <radialGradient id="cAtomLight" cx="0.35" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#94A3B8"/>
+    </radialGradient>
+    <linearGradient id="wordPy" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(160 160)">
+    <polygon points="0,-100 86.6,-50 86.6,50 0,100 -86.6,50 -86.6,-50"
+      fill="none" stroke="url(#ringInkLight)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <g fill="none" stroke="url(#ringInkLight)" stroke-width="7" stroke-linecap="round" opacity="0.9">
+      <line x1="60.6" y1="-75" x2="60.6" y2="-25"/>
+      <line x1="-60.6" y1="-75" x2="-60.6" y2="-25"/>
+      <line x1="0" y1="76" x2="0" y2="26"/>
+    </g>
+
+    <circle r="42" fill="none" stroke="#3B82F6" stroke-width="4" opacity="0.35"/>
+
+    <g stroke="#0F172A" stroke-width="2">
+      <circle cx="86.6"  cy="-50" r="12" fill="url(#cAtomLight)"/>
+      <circle cx="86.6"  cy="50"  r="12" fill="url(#cAtomLight)"/>
+      <circle cx="0"     cy="100" r="12" fill="url(#cAtomLight)"/>
+      <circle cx="-86.6" cy="50"  r="12" fill="url(#cAtomLight)"/>
+      <circle cx="-86.6" cy="-50" r="12" fill="url(#cAtomLight)"/>
+      <circle cx="0"     cy="-100" r="18" fill="url(#nAtomLight)"/>
+    </g>
+  </g>
+
+  <g font-family="-apple-system, Inter, 'Segoe UI', sans-serif" font-weight="700" font-size="128" letter-spacing="-4">
+    <text x="300" y="204" fill="url(#wordPy)">Py</text>
+    <text x="452" y="204" fill="#0F172A">Chem</text>
+  </g>
+
+  <text x="304" y="252" font-family="-apple-system, Inter, 'Segoe UI', sans-serif" font-weight="500" font-size="22" fill="#64748B" letter-spacing="4">MOLECULAR VISUALIZATION SOFTWARE</text>
+</svg>

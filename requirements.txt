@@ -1,0 +1,10 @@
+PySide6>=6.5.0
+numpy>=1.24.0
+matplotlib>=3.7
+pandas>=2.0
+psutil>=5.9
+pillow>=10.0
+scipy>=1.10
+scikit-learn>=1.3
+# Optional dependencies (used by specific plugins)
+# rdkit>=2023.3 (Completely optional, as it is required for only one plugin. PyChem-Pro runs without RdKIT)
