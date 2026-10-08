@@ -30,7 +30,7 @@ We are glad to share that PyChem-Pro has received official financial support fro
   - [Recommended: One-Click Launchers](#recommended-one-click-launchers)
   - [Manual Setup (all platforms)](#manual-setup-all-platforms)
 - [Quick Start — Python API](#quick-start--python-api)
-- [Project Structure](#project-structure)
+- [PyChem-Dock](#pychem-dock)
 - [Services Layer (Public Protocols)](#services-layer-public-protocols)
 - [MMFF94 Force Field](#mmff94-force-field)
 - [Rendering Pipeline](#rendering-pipeline)
@@ -371,84 +371,19 @@ pychem.rmsd(mol_a, mol_b, *, method='auto', selection='auto',
 
 ---
 
-## Project Structure
+## PyChem-Dock
 
-```
-PyChem/
-├── pychem/                        # Public API (no Qt dependency)
-│   ├── __init__.py                #   import pychem
-│   ├── api.py                     #   public facade functions
-│   └── _bridge.py                 #   ServiceRegistry singleton
-│
-├── src/
-│   ├── core/                      # Infrastructure and core domain
-│   │   ├── domain/models/         # Molecule, Atom, Bond, Element
-│   │   ├── protocols/             # IForceField, IRenderer, ILoader, ...
-│   │   ├── events.py              # EventBus + event dataclasses
-│   │   ├── parallel.py            # ParallelExecutor (50% CPU cores)
-│   │   ├── registry.py            # ServiceRegistry
-│   │   ├── performance/           # Profiler, parallel loader
-│   │   └── security/              # License manager
-│   │
-│   ├── services/                  # Service implementations
-│   │   ├── forcefield/            # MMFF94Service, HydrogenAdder,
-│   │   │                          # AngleBending, Torsion, parameters
-│   │   ├── rendering/             # RendererFactory, parallel_projection
-│   │   ├── loading/               # LoaderService
-│   │   ├── coordinates/           # CoordinateGeneratorService
-│   │   └── descriptors/           # DescriptorService
-│   │
-│   ├── app/                       # GUI application (thin shell)
-│   │   ├── main_window.py         # QMainWindow wiring
-│   │   ├── menu_bar.py            # Menu construction
-│   │   ├── toolbar.py             # Toolbar construction
-│   │   ├── file_operations.py     # Open / Save / Export / Print
-│   │   ├── chemistry_actions.py   # Optimize / Charges / Descriptors
-│   │   ├── viewer_coordinator.py  # View toggles, COM/centroid spheres
-│   │   ├── molecule_controller.py # Signal wiring, undo/redo, selection
-│   │   ├── conversion_worker.py   # QThread SMILES->3D worker
-│   │   ├── plugin_interface.py    # Plugin browser UI
-│   │   ├── plugin_card.py
-│   │   └── plugin_installer.py
-│   │
-│   ├── features/                  # Feature modules (split by domain)
-│   │   ├── visualization_3d/      # MolViewer3D + painter_renderer +
-│   │   │                          # mouse_controller + protein_rendering
-│   │   ├── visualization_2d/      # MolViewer2D + bond/atom renderers
-│   │   ├── cheminformatics/       # AM1, PM3, Gasteiger, MMFF94 legacy
-│   │   ├── layout_3d/             # 3D coordinate generator
-│   │   ├── layout_2d/             # 2D layout generators
-│   │   ├── smiles_parser/         # OpenSMILES parser
-│   │   ├── smiles_generator/      # SMILES writer
-│   │   ├── io/                    # File readers/writers
-│   │   ├── descriptor_calculator/ # Descriptor GUI and engines
-│   │   ├── data_splitting/        # QSAR dataset partitioning and UI
-│   │   ├── scripting_console/     # Python REPL + atom selection
-│   │   ├── control_panel/         # Input panel
-│   │   └── ui/                    # Dialogs (colors, spheres, etc.)
-│   │
-│   ├── plugins/                   # Plugin manager infrastructure
-│   ├── shared/                    # Qt compat, theme
-│   └── vendors/oasa/              # Vendored OASA library (frozen)
-│
-├── plugins/                       # Built-in and user plugins
-│   ├── docking_pose_visualizer.py
-│   ├── ramachandran_plugin.py
-│   ├── qsar_modeler_plugin.py
-│   ├── mol_weight_calculator.py
-│   └── ...
-│
-├── tests/                         # Unit tests
-├── testing/                       # Development / debugging scripts
-├── docs/                          # Architecture specs, user guides
-│   └── superpowers/
-│       ├── specs/                 # Design documents
-│       └── plans/                 # Implementation plans
-├── main.py                        # Application entry point
-├── build.py                       # Nuitka bundler script
-├── requirements.txt
-└── README.md                      # You are here
-```
+![PyChem-Dock](assets/dock-1.jpg)
+
+**Key Highlights & Features of PyChem-Dock:**
+
+(1) **Zero External Dependencies:** No need for PyTorch, FAIRChem, MACE, ASE, or even RDKit for standard offline docking!
+(2) **Empirical Scoring Function:** Employs an AutoDock Vina-like potential including Gauss dispersion, steric repulsion, hydrophobic contacts, hydrogen bonding, electrostatics, and torsional entropy penalty.
+(3) **Advanced Conformational Search:** Utilizes a combination of Genetic Algorithms (GA) for continuous torsion search and Iterated Local Search (ILS) Monte Carlo sampling for gradient-free pattern relaxation.
+(4) **Built-in Conformer Engine:** Features PyChem-Pro's pure-graph cycle detection and MMFF94 force-field relaxation with RMSD diversity filtering.
+(5) **Active Site Studio:** Versatile binding site preparation with 4 modes (Pocket Detection, Residue Selection, Custom Coordinates, Ligand Reference) and structural metal preservation (Zn, Fe, Mg, Ca).
+(6) **Interactive 3D Viewer & UI:** A sleek, dark glassmorphism responsive GUI with a 2-column layout. Monitor the pipeline in real-time and inspect your best docked poses with a single click in PyChem-Pro’s native 3D visualizer!
+(7) **Speed:** Completes molecular docking in 5 to 15 seconds due to multiprocessing.
 
 ---
 
