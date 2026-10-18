@@ -339,7 +339,10 @@ class RadiusOfGyrationWidget(QWidget):
             main_layout.addWidget(QLabel("Matplotlib canvas could not be loaded."), 1)
 
     def select_directory(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "Select Input Directory")
+        parent = self._get_dialog_parent()
+        dir_path = QFileDialog.getExistingDirectory(parent, "Select Input Directory")
+        parent.raise_()
+        parent.activateWindow()
         if dir_path:
             self.input_dir = dir_path
             self.lbl_dir.setText(f"Folder: {os.path.basename(dir_path)}")
@@ -417,7 +420,9 @@ class RadiusOfGyrationWidget(QWidget):
         if not self.results:
             return
             
-        base_path, _ = QFileDialog.getSaveFileName(self, "Save Output Base Filename", "", "CSV Files (*.csv)")
+        base_path, _ = QFileDialog.getSaveFileName(self._get_dialog_parent(), "Save Output Base Filename", "", "CSV Files (*.csv)")
+        self._get_dialog_parent().raise_()
+        self._get_dialog_parent().activateWindow()
         if not base_path:
             return
             
@@ -496,11 +501,21 @@ class RadiusOfGyrationWidget(QWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

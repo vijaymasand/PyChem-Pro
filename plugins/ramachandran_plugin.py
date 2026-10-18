@@ -540,11 +540,13 @@ class RamachandranWidget(PluginWidget):
         return panel
     
     def on_add_pdb(self):
+        parent = self._get_dialog_parent()
         files, _ = QFileDialog.getOpenFileNames(
-            self.widget, "Open PDB Files", "",
+            parent, "Open PDB Files", "",
             "PDB Files (*.pdb *.ent);;All Files (*.*)"
         )
-        
+        parent.raise_()
+        parent.activateWindow()
         if not files:
             return
         
@@ -605,30 +607,37 @@ class RamachandranWidget(PluginWidget):
         self.update_details()
     
     def on_export_plot(self):
+        parent = self._get_dialog_parent()
         file_path, _ = QFileDialog.getSaveFileName(
-            self.widget, "Save Plot", "ramachandran_plot.png",
+            parent, "Save Plot", "ramachandran_plot.png",
             "PNG (*.png);;PDF (*.pdf);;SVG (*.svg)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not file_path:
             return
         
         try:
             self.figure.savefig(file_path, dpi=self.dpi_spin.value(),
                               bbox_inches='tight', facecolor='white')
-            QMessageBox.information(self.widget, "Success",
+            QMessageBox.information(parent, "Success",
                 f"Plot saved to:\n{file_path}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error", str(e))
+            QMessageBox.critical(parent, "Error", str(e))
     
     def on_export_csv(self):
         if not self.structure_data:
-            QMessageBox.information(self.widget, "Info", "No data to export")
+            parent = self._get_dialog_parent()
+            QMessageBox.information(parent, "Info", "No data to export")
             return
         
+        parent = self._get_dialog_parent()
         file_path, _ = QFileDialog.getSaveFileName(
-            self.widget, "Export CSV", "ramachandran_data.csv",
+            parent, "Export CSV", "ramachandran_data.csv",
             "CSV (*.csv)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not file_path:
             return
         
@@ -648,19 +657,22 @@ class RamachandranWidget(PluginWidget):
                             r.region.value
                         ])
             
-            QMessageBox.information(self.widget, "Success",
+            QMessageBox.information(parent, "Success",
                 f"Data exported to:\n{file_path}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error", str(e))
+            QMessageBox.critical(parent, "Error", str(e))
     
     def on_export_report(self):
         if not self.structure_data:
             return
         
+        parent = self._get_dialog_parent()
         file_path, _ = QFileDialog.getSaveFileName(
-            self.widget, "Save Report", "ramachandran_report.txt",
+            parent, "Save Report", "ramachandran_report.txt",
             "Text (*.txt)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not file_path:
             return
         
@@ -686,10 +698,10 @@ class RamachandranWidget(PluginWidget):
                         f.write(f"  {rt.value.capitalize():10s}: {stats[rt]:4d} ({pct:5.1f}%)\n")
                     f.write("\n")
             
-            QMessageBox.information(self.widget, "Success",
+            QMessageBox.information(parent, "Success",
                 f"Report saved to:\n{file_path}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error", str(e))
+            QMessageBox.critical(parent, "Error", str(e))
     
     def on_plot_click(self, event):
         if not event.dblclick:
@@ -968,11 +980,21 @@ Density: {density:.3f} (log10)
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self.widget
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

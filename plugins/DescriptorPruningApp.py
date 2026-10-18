@@ -111,7 +111,10 @@ class DescriptorPruningWidget(PluginWidget):
         layout.addWidget(self.status_text)
 
     def select_files(self):
-        files, _ = QFileDialog.getOpenFileNames(self.widget, "Select CSV files", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        files, _ = QFileDialog.getOpenFileNames(parent, "Select CSV files", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if files:
             self.desc_files = files
             self.file_table.setRowCount(len(files))
@@ -136,7 +139,10 @@ class DescriptorPruningWidget(PluginWidget):
             QMessageBox.warning(self.widget, "Input Error", "Please ensure all numeric settings contain valid numbers.")
             return
 
-        save_path, _ = QFileDialog.getSaveFileName(self.widget, "Save Master CSV", "Final_Master_Descriptors.csv", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        save_path, _ = QFileDialog.getSaveFileName(parent, "Save Master CSV", "Final_Master_Descriptors.csv", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if not save_path:
             return
 
@@ -236,6 +242,15 @@ class DescriptorPruningWidget(PluginWidget):
 
 
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self.widget
+
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
             self._active_popout.raise_()
@@ -263,6 +278,7 @@ class DescriptorPruningWidget(PluginWidget):
         self.main_content_widget.setParent(self.widget)
         self.widget.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        self.widget.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

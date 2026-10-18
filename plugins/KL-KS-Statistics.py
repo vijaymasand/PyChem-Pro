@@ -269,7 +269,10 @@ class StatComparisonWidget(QWidget):
             main_layout.addWidget(QLabel("Matplotlib canvas could not be loaded."), 1)
 
     def load_files(self):
-        file_paths, _ = QFileDialog.getOpenFileNames(self, "Open CSV Files", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        file_paths, _ = QFileDialog.getOpenFileNames(parent, "Open CSV Files", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if not file_paths:
             return
             
@@ -364,10 +367,13 @@ class StatComparisonWidget(QWidget):
     def save_results(self):
         if not hasattr(self, 'results_df') or self.results_df.empty:
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Save Comparison Table", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getSaveFileName(parent, "Save Comparison Table", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if path:
             self.results_df.to_csv(path, index=False)
-            QMessageBox.information(self, "Saved", f"Results exported to:\n{path}")
+            QMessageBox.information(parent, "Saved", f"Results exported to:\n{path}")
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
@@ -392,10 +398,20 @@ class StatComparisonWidget(QWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self
+
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self)
         self.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        self.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

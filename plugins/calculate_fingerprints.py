@@ -661,9 +661,12 @@ class CalculateFingerprintsWidget(PluginWidget):
         self.log_output.append(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
     def browse_file(self):
+        parent = self._get_dialog_parent()
         file_path, _ = QFileDialog.getOpenFileName(
-            self.widget, "Open SMILES Dataset", "", "Data Files (*.csv *.tsv *.xlsx *.xls)"
+            parent, "Open SMILES Dataset", "", "Data Files (*.csv *.tsv *.xlsx *.xls)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not file_path:
             return
 
@@ -724,7 +727,7 @@ class CalculateFingerprintsWidget(PluginWidget):
             self.log(f"Header loaded successfully ({len(cols)} columns detected).")
 
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error Loading File", f"Could not read dataset headers:\n{str(e)}")
+            QMessageBox.critical(parent, "Error Loading File", f"Could not read dataset headers:\n{str(e)}")
             self.log(f"Error: {str(e)}")
 
     def start_calculation(self):
@@ -972,14 +975,17 @@ class CalculateFingerprintsWidget(PluginWidget):
                 self.tbl_tanimoto.setItem(r, c, QTableWidgetItem(txt))
 
     def export_tanimoto_matrix(self):
+        parent = self._get_dialog_parent()
         if self.latest_tanimoto_df is None:
-            QMessageBox.warning(self.widget, "No Matrix", "No Tanimoto matrix currently loaded. Check 'Calculate Tanimoto Matrix' in Tab 1 first.")
+            QMessageBox.warning(parent, "No Matrix", "No Tanimoto matrix currently loaded. Check 'Calculate Tanimoto Matrix' in Tab 1 first.")
             return
 
-        path, _ = QFileDialog.getSaveFileName(self.widget, "Export Tanimoto Matrix", "tanimoto_matrix.csv", "CSV Files (*.csv)")
+        path, _ = QFileDialog.getSaveFileName(parent, "Export Tanimoto Matrix", "tanimoto_matrix.csv", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if path:
             self.latest_tanimoto_df.to_csv(path, index=False)
-            QMessageBox.information(self.widget, "Success", f"Matrix exported to:\n{path}")
+            QMessageBox.information(parent, "Success", f"Matrix exported to:\n{path}")
 
     def on_molecule_changed(self, molecule):
         if molecule:
@@ -1014,11 +1020,21 @@ class CalculateFingerprintsWidget(PluginWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self.widget
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

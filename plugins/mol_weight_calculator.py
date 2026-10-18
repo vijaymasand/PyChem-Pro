@@ -205,9 +205,12 @@ class MolWeightWidget(PluginWidget):
     def export_results(self):
         """Export results to CSV file."""
         try:
+            parent = self._get_dialog_parent()
             filename, _ = QFileDialog.getSaveFileName(
-                self.widget, "Export Results", "", "CSV Files (*.csv)"
+                parent, "Export Results", "", "CSV Files (*.csv)"
             )
+            parent.raise_()
+            parent.activateWindow()
 
             if not filename:
                 return
@@ -239,12 +242,12 @@ class MolWeightWidget(PluginWidget):
                 f.write(output.getvalue())
 
             self.status_text.append(f"✓ Results exported to: {filename}")
-            QMessageBox.information(self.widget, "Export Successful",
+            QMessageBox.information(parent, "Export Successful",
                                    f"Results saved to:\n{filename}")
 
         except Exception as e:
             self.status_text.append(f"✗ Export error: {str(e)}")
-            QMessageBox.critical(self.widget, "Export Error",
+            QMessageBox.critical(self._get_dialog_parent(), "Export Error",
                                f"Failed to export results:\n{str(e)}")
 
     def update_ui_state(self, has_results):
@@ -299,11 +302,21 @@ class MolWeightWidget(PluginWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self.widget
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)
