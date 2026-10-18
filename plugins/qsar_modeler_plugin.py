@@ -663,7 +663,10 @@ class QsarModelerWidget(PluginWidget):
         main_layout.addLayout(export_layout)
 
     def load_data(self):
-        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Dataset", "", "CSV/TSV Files (*.csv *.tsv *.txt)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getOpenFileName(parent, "Select Dataset", "", "CSV/TSV Files (*.csv *.tsv *.txt)")
+        parent.raise_()
+        parent.activateWindow()
         if not path: return
 
         try:
@@ -694,10 +697,13 @@ class QsarModelerWidget(PluginWidget):
 
             self.txt_log.append(f"Loaded Train CSV: {len(self.engine.df)} rows and {len(cols)} columns.")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Load Error", str(e))
+            QMessageBox.critical(parent, "Load Error", str(e))
 
     def load_test_data(self):
-        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Test Dataset", "", "CSV/TSV Files (*.csv *.tsv *.txt)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getOpenFileName(parent, "Select Test Dataset", "", "CSV/TSV Files (*.csv *.tsv *.txt)")
+        parent.raise_()
+        parent.activateWindow()
         if not path: return
 
         try:
@@ -710,7 +716,7 @@ class QsarModelerWidget(PluginWidget):
 
             self.txt_log.append(f"Loaded Test CSV: {len(df)} rows.")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Load Error", str(e))
+            QMessageBox.critical(parent, "Load Error", str(e))
 
     def run_inline_split(self):
         if self.engine.df is None:
@@ -845,7 +851,10 @@ class QsarModelerWidget(PluginWidget):
 
     def export_csv(self):
         if not self.current_model: return
-        path, _ = QFileDialog.getSaveFileName(self.widget, "Save Predictions", "QSAR_Predictions.csv", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getSaveFileName(parent, "Save Predictions", "QSAR_Predictions.csv", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if not path: return
 
         y_tr = self.engine.df.iloc[self.engine.tr_idx][self.engine.y_col].values
@@ -868,7 +877,10 @@ class QsarModelerWidget(PluginWidget):
 
     def export_plots(self):
         if not self.current_model: return
-        directory = QFileDialog.getExistingDirectory(self.widget, "Select Directory to Save Plots")
+        parent = self._get_dialog_parent()
+        directory = QFileDialog.getExistingDirectory(parent, "Select Directory to Save Plots")
+        parent.raise_()
+        parent.activateWindow()
         if not directory: return
 
         directory = directory.replace("\\", "/")
@@ -912,7 +924,8 @@ class QsarModelerWidget(PluginWidget):
                 self.txt_log.append(f"Could not generate SHAP plot: {e}")
 
         self.txt_log.append(f"Plots saved to {directory}")
-        QMessageBox.information(self.widget, "Export Successful", f"Plots successfully saved to:\n{directory}")
+        parent = self._get_dialog_parent()
+        QMessageBox.information(parent, "Export Successful", f"Plots successfully saved to:\n{directory}")
 
 
 
@@ -939,10 +952,20 @@ class QsarModelerWidget(PluginWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self.widget
+
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self.widget)
         self.widget.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        self.widget.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

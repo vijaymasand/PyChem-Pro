@@ -519,10 +519,20 @@ class VisualizerSettingsDialog(QDialog):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self
+
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self)
         self.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        self.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)
@@ -1484,15 +1494,18 @@ class DockingPoseVisualizerWidget(QWidget):
     def export(self) -> None:
         """Export the current visualization to a high-resolution image with custom DPI and format."""
         # 1. Select format and path
+        parent = self._get_dialog_parent()
         path, filt = QFileDialog.getSaveFileName(
-            self, "Save Mapping", "Docking_Pose.png", 
+            parent, "Save Mapping", "Docking_Pose.png",
             "PNG Images (*.png);;JPEG Images (*.jpg *.jpeg);;All Files (*)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not path: return
         
         # 2. Select DPI (Default 300 for publication quality)
         dpi, ok = QInputDialog.getInt(
-            self, "Export Resolution", "Enter target DPI (72-1200):", 
+            parent, "Export Resolution", "Enter target DPI (72-1200):", 
             300, 72, 1200, 1
         )
         if not ok: return
@@ -1605,11 +1618,21 @@ class DockingPoseVisualizerWidget(QWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

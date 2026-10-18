@@ -670,7 +670,10 @@ class QsarRfaWidget(PluginWidget):
 
 
     def load_train_split(self):
-        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Train Split CSV", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getOpenFileName(parent, "Select Train Split CSV", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -681,10 +684,13 @@ class QsarRfaWidget(PluginWidget):
                 self.tbl_train.setItem(i, 0, QTableWidgetItem(str(val)))
             self.txt_log.append(f"Loaded {len(ids)} training IDs from {path.split('/')[-1]}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Load Error", str(e))
+            QMessageBox.critical(parent, "Load Error", str(e))
 
     def load_test_split(self):
-        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Test Split CSV", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getOpenFileName(parent, "Select Test Split CSV", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -695,7 +701,7 @@ class QsarRfaWidget(PluginWidget):
                 self.tbl_test.setItem(i, 0, QTableWidgetItem(str(val)))
             self.txt_log.append(f"Loaded {len(ids)} test IDs from {path.split('/')[-1]}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Load Error", str(e))
+            QMessageBox.critical(parent, "Load Error", str(e))
 
 
 
@@ -709,7 +715,7 @@ class QsarRfaWidget(PluginWidget):
         train_pct = self.split_spin.value() / 100.0
         split_point = int(train_pct * len(all_ids))
 
-        train_ids, test_ids = sorted(all_ids[:split_point]), sorted(all_ids[split_point:])
+        train_ids, test_ids = sorted(all_ids[:split_point], key=str), sorted(all_ids[split_point:], key=str)
 
         self.tbl_train.setRowCount(len(train_ids))
         for i, val in enumerate(train_ids): self.tbl_train.setItem(i, 0, QTableWidgetItem(str(val)))
@@ -905,7 +911,10 @@ Warning h* : {m['Warning_Lev']:.4f}
 
     def load_data(self):
         """Load the main dataset CSV and store in self.dataset."""
-        path, _ = QFileDialog.getOpenFileName(self.widget, "Select Dataset CSV", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getOpenFileName(parent, "Select Dataset CSV", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -914,7 +923,7 @@ Warning h* : {m['Warning_Lev']:.4f}
             self.lbl_file.setText(os.path.basename(path))
             self.txt_log.append(f"Loaded dataset with {df.shape[0]} rows from {os.path.basename(path)}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Load Error", str(e))
+            QMessageBox.critical(parent, "Load Error", str(e))
     def move_to_train(self):
         """Move selected IDs from the Test table to the Train table."""
         selected_items = self.tbl_test.selectedItems()
@@ -963,37 +972,53 @@ Warning h* : {m['Warning_Lev']:.4f}
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self.widget
+
     def _restore_from_popout(self) -> None:
         """Restore the splitter back into the embedded widget after dialog closes."""
         self.splitter.setParent(self.widget)
         self.widget.layout().addWidget(self.splitter)
         self._active_popout = None
+        self.widget.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)
 
     def export_results(self):
         if self.result_cache is None: return
-        path, _ = QFileDialog.getSaveFileName(self.widget, "Save CSV Results", "QSAR_Results.csv", "CSV (*.csv)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getSaveFileName(parent, "Save CSV Results", "QSAR_Results.csv", "CSV (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if path:
             try:
                 self.result_cache.to_csv(path, index=False)
-                QMessageBox.information(self.widget, "Export Success", f"Results successfully saved to {path}!")
+                QMessageBox.information(parent, "Export Success", f"Results successfully saved to {path}!")
             except Exception as e:
-                QMessageBox.critical(self.widget, "Export Error", str(e))
+                QMessageBox.critical(parent, "Export Error", str(e))
 
     def export_plot(self):
         current_widget = self.tabs.currentWidget()
         if not isinstance(current_widget, FigureCanvas): return
 
-        path, _ = QFileDialog.getSaveFileName(self.widget, "Save Plot", "plot.png", "Images (*.png *.jpg *.jpeg)")
+        parent = self._get_dialog_parent()
+        path, _ = QFileDialog.getSaveFileName(parent, "Save Plot", "plot.png", "Images (*.png *.jpg *.jpeg)")
+        parent.raise_()
+        parent.activateWindow()
         if path:
             dpi_val = self.dpi_spin.value()
             try:
                 current_widget.fig.savefig(path, dpi=dpi_val, bbox_inches='tight')
-                QMessageBox.information(self.widget, "Success", f"Plot saved successfully at {dpi_val} DPI.")
+                QMessageBox.information(parent, "Success", f"Plot saved successfully at {dpi_val} DPI.")
             except Exception as e:
-                QMessageBox.critical(self.widget, "Export Error", f"Could not save image:\n{str(e)}")
+                QMessageBox.critical(parent, "Export Error", f"Could not save image:\n{str(e)}")
 
 # ===================================================================
 # PLUGIN WRAPPER

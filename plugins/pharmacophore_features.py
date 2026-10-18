@@ -1264,11 +1264,14 @@ class PharmacophoreVisualizerWidget(QWidget):
 
     def _load_from_file(self):
         """Load molecule from a MOL, SDF, or MOL2 file."""
+        parent = self._get_dialog_parent()
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open Molecule File", "",
+            parent, "Open Molecule File", "",
             "Molecule Files (*.mol *.sdf *.mol2);;MOL Files (*.mol);;"
             "SDF Files (*.sdf);;MOL2 Files (*.mol2);;All Files (*)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
 
@@ -1710,13 +1713,16 @@ class PharmacophoreVisualizerWidget(QWidget):
     # ── Export Methods ────────────────────────────────────────────
 
     def _export_json(self):
+        parent = self._get_dialog_parent()
         if not self._results:
-            QMessageBox.warning(self, "No Data", "Run analysis first.")
+            QMessageBox.warning(parent, "No Data", "Run analysis first.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export JSON", "pharmacophore.json",
+            parent, "Export JSON", "pharmacophore.json",
             "JSON Files (*.json);;All Files (*)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -1749,20 +1755,23 @@ class PharmacophoreVisualizerWidget(QWidget):
             with open(path, "w") as f:
                 json.dump(export_data, f, indent=2)
             QMessageBox.information(
-                self, "Exported", f"Saved to {os.path.basename(path)}"
+                parent, "Exported", f"Saved to {os.path.basename(path)}"
             )
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
+            QMessageBox.critical(parent, "Export Error", str(e))
 
     def _export_liquid(self):
         """Export 120-D descriptor in original .liquid format."""
+        parent = self._get_dialog_parent()
         if not self._results:
-            QMessageBox.warning(self, "No Data", "Run analysis first.")
+            QMessageBox.warning(parent, "No Data", "Run analysis first.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Descriptor", "molecule.liquid",
+            parent, "Export Descriptor", "molecule.liquid",
             "LIQUID Files (*.liquid);;All Files (*)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -1775,20 +1784,23 @@ class PharmacophoreVisualizerWidget(QWidget):
                         f.write(f"\t{val}")
                 f.write("\n")
             QMessageBox.information(
-                self, "Exported", f"Saved to {os.path.basename(path)}"
+                parent, "Exported", f"Saved to {os.path.basename(path)}"
             )
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
+            QMessageBox.critical(parent, "Export Error", str(e))
 
     def _export_csv(self):
         """Export feature/cluster summary as CSV."""
+        parent = self._get_dialog_parent()
         if not self._results:
-            QMessageBox.warning(self, "No Data", "Run analysis first.")
+            QMessageBox.warning(parent, "No Data", "Run analysis first.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export CSV", "pharmacophore_summary.csv",
+            parent, "Export CSV", "pharmacophore_summary.csv",
             "CSV Files (*.csv);;All Files (*)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -1801,20 +1813,23 @@ class PharmacophoreVisualizerWidget(QWidget):
                     f.write(f"{t},{fc.get(t, 0)},{cc.get(t, 0)}\n")
                 f.write(f"\nTotal,{s['total_features']},{s['total_clusters']}\n")
             QMessageBox.information(
-                self, "Exported", f"Saved to {os.path.basename(path)}"
+                parent, "Exported", f"Saved to {os.path.basename(path)}"
             )
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
+            QMessageBox.critical(parent, "Export Error", str(e))
 
     def _export_image(self):
         """Export the visualization as a high-res PNG."""
+        parent = self._get_dialog_parent()
         if not self.viewer.scene.items():
-            QMessageBox.warning(self, "Empty", "Nothing to export.")
+            QMessageBox.warning(parent, "Empty", "Nothing to export.")
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Image", "pharmacophore.png",
+            parent, "Export Image", "pharmacophore.png",
             "PNG Images (*.png);;All Files (*)"
         )
+        parent.raise_()
+        parent.activateWindow()
         if not path:
             return
         try:
@@ -1880,11 +1895,21 @@ class PharmacophoreVisualizerWidget(QWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)

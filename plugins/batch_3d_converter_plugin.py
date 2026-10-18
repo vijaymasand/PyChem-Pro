@@ -243,12 +243,18 @@ class Batch3DConverterWidget(QWidget):
         layout.addWidget(self.log_area)
         
     def _browse_csv(self):
-        file, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV Files (*.csv)")
+        parent = self._get_dialog_parent()
+        file, _ = QFileDialog.getOpenFileName(parent, "Select CSV", "", "CSV Files (*.csv)")
+        parent.raise_()
+        parent.activateWindow()
         if file:
             self.csv_field.setText(file)
             
     def _browse_out(self):
-        dir_ = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        parent = self._get_dialog_parent()
+        dir_ = QFileDialog.getExistingDirectory(parent, "Select Output Directory")
+        parent.raise_()
+        parent.activateWindow()
         if dir_:
             self.out_field.setText(dir_)
             
@@ -331,11 +337,21 @@ class Batch3DConverterWidget(QWidget):
         else:
             dialog.showMaximized()
 
+    def _get_dialog_parent(self):
+        """Return the currently active top-level window for use as a QFileDialog parent.
+        When the plugin is maximized/popped out, returns the popout dialog so that
+        native file dialogs are owned by the visible window and don't cause it to go
+        behind the main application window on Windows."""
+        if getattr(self, '_active_popout', None) is not None:
+            return self._active_popout
+        return self
+
     def _restore_from_popout(self) -> None:
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
         self._active_popout = None
+        w.update()
 
     def toggle_maximize(self):
         self._open_popout(fullscreen=False)
