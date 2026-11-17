@@ -461,16 +461,17 @@ class QsarCuratorWidget(PluginWidget):
         extra = []
         for i in range(self.list_extra.count()):
             item = self.list_extra.item(i)
-            if item.checkState() == Qt.CheckState.Checked:
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
                 extra.append(item.text())
         return extra
 
     def run_curation(self):
+        parent = self._get_dialog_parent()
         if not self.source_path or not self.output_path:
-            QMessageBox.warning(self.widget, "Missing Files", "Please select both source and output CSV files.")
+            QMessageBox.warning(parent, "Missing Files", "Please select both source and output CSV files.")
             return
         if not self.combo_smiles.currentText() or not self.combo_activity.currentText():
-            QMessageBox.warning(self.widget, "Missing Columns", "Please assign SMILES and Activity columns.")
+            QMessageBox.warning(parent, "Missing Columns", "Please assign SMILES and Activity columns.")
             return
 
         cfg = {
@@ -503,11 +504,18 @@ class QsarCuratorWidget(PluginWidget):
 
     def curation_finished(self, success, message, result_df):
         self.btn_run.setEnabled(True)
+        parent = self._get_dialog_parent()
+        if parent is not None:
+            if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                parent.showNormal()
+            parent.raise_()
+            parent.activateWindow()
+
         if success:
             self._populate_preview(result_df)
-            QMessageBox.information(self.widget, "Success ✅", message)
+            QMessageBox.information(parent, "Success ✅", message)
         else:
-            QMessageBox.critical(self.widget, "Error ❌", f"Curation failed:\n{message}")
+            QMessageBox.critical(parent, "Error ❌", f"Curation failed:\n{message}")
 
     def _populate_preview(self, df):
         if df is None or df.empty:
@@ -539,18 +547,29 @@ class QsarCuratorWidget(PluginWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
 
         dialog = QDialog()
-        dialog.setWindowTitle("Plugin")
+        dialog.setWindowTitle("QSAR Dataset Curator")
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -563,11 +582,18 @@ class QsarCuratorWidget(PluginWidget):
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self.widget)
         self.widget.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         self.widget.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 class QsarCuratorPlugin(BasePlugin):

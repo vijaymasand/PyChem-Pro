@@ -719,8 +719,9 @@ class QsarModelerWidget(PluginWidget):
             QMessageBox.critical(parent, "Load Error", str(e))
 
     def run_inline_split(self):
+        parent = self._get_dialog_parent()
         if self.engine.df is None:
-            QMessageBox.warning(self.widget, "Split Error", "Please load a Train CSV dataset first.")
+            QMessageBox.warning(parent, "Split Error", "Please load a Train CSV dataset first.")
             return
 
         algo = self.cmb_split_algo.currentText()
@@ -728,11 +729,11 @@ class QsarModelerWidget(PluginWidget):
         try:
             ratio = float(self.txt_train_ratio.currentText())
         except ValueError:
-            QMessageBox.warning(self.widget, "Split Error", "Invalid Train Ratio. Please enter a float (e.g. 0.8)")
+            QMessageBox.warning(parent, "Split Error", "Invalid Train Ratio. Please enter a float (e.g. 0.8)")
             return
 
         if not smiles:
-            QMessageBox.warning(self.widget, "Split Error", "Please select the SMILES column.")
+            QMessageBox.warning(parent, "Split Error", "Please select the SMILES column.")
             return
 
         y_col = self.cmb_y.currentText()
@@ -764,40 +765,55 @@ class QsarModelerWidget(PluginWidget):
             self.txt_log.append(f"Inline split succeeded using '{algo}' (Train: {len(res.train_indices)}, Test: {len(res.test_indices)}). Created and selected 'Split_Status' column.")
             self.apply_setup()
         except Exception as e:
-            QMessageBox.critical(self.widget, "Split Error", str(e))
+            QMessageBox.critical(parent, "Split Error", str(e))
 
     def add_descriptors(self):
-        for item in self.tbl_avail.selectedItems():
-            row = self.tbl_sel.rowCount()
-            self.tbl_sel.insertRow(row)
-            self.tbl_sel.setItem(row, 0, QTableWidgetItem(item.text()))
-            self.tbl_avail.removeRow(item.row())
+        items = self.tbl_avail.selectedItems()
+        if not items:
+            return
+        rows = sorted({item.row() for item in items}, reverse=True)
+        for r in rows:
+            item = self.tbl_avail.takeItem(r, 0)
+            self.tbl_avail.removeRow(r)
+            if item is not None:
+                new_row = self.tbl_sel.rowCount()
+                self.tbl_sel.insertRow(new_row)
+                self.tbl_sel.setItem(new_row, 0, item)
 
     def rem_descriptors(self):
-        for item in self.tbl_sel.selectedItems():
-            row = self.tbl_avail.rowCount()
-            self.tbl_avail.insertRow(row)
-            self.tbl_avail.setItem(row, 0, QTableWidgetItem(item.text()))
-            self.tbl_sel.removeRow(item.row())
+        items = self.tbl_sel.selectedItems()
+        if not items:
+            return
+        rows = sorted({item.row() for item in items}, reverse=True)
+        for r in rows:
+            item = self.tbl_sel.takeItem(r, 0)
+            self.tbl_sel.removeRow(r)
+            if item is not None:
+                new_row = self.tbl_avail.rowCount()
+                self.tbl_avail.insertRow(new_row)
+                self.tbl_avail.setItem(new_row, 0, item)
 
     def apply_setup(self):
+        parent = self._get_dialog_parent()
         y = self.cmb_y.currentText()
         split = self.cmb_split.currentText()
         split_col = None if split == "(none)" else split
 
         x_cols = []
         for i in range(self.tbl_sel.rowCount()):
-            x_cols.append(self.tbl_sel.item(i, 0).text())
+            item = self.tbl_sel.item(i, 0)
+            if item is not None and item.text().strip():
+                x_cols.append(item.text().strip())
 
         if not y or not x_cols:
-            QMessageBox.warning(self.widget, "Setup Error", "Select a Target (Y) and at least one descriptor.")
+            QMessageBox.warning(parent, "Setup Error", "Select a Target (Y) and at least one descriptor.")
             return
 
         try:
             self.engine.set_setup(y, x_cols, split_col)
             self.txt_log.append(f"Setup Applied: Target='{y}', Descriptors={len(x_cols)}, Train N={len(self.engine.tr_idx)}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Setup Error", str(e))
+            QMessageBox.critical(parent, "Setup Error", str(e))
 
     def run_model(self):
         self.apply_setup()
@@ -809,7 +825,10 @@ class QsarModelerWidget(PluginWidget):
 
         config = {}
         for i in range(self.settings_tbl.rowCount()):
-            config[self.settings_tbl.item(i, 0).text()] = self.settings_tbl.item(i, 1).text()
+            k_item = self.settings_tbl.item(i, 0)
+            v_item = self.settings_tbl.item(i, 1)
+            if k_item is not None and v_item is not None:
+                config[k_item.text().strip()] = v_item.text().strip()
 
         use_ga = self.cmb_ga.currentText() == "Run Genetic Algorithm (GA)"
         model_type = self.cmb_model.currentText()
@@ -821,6 +840,13 @@ class QsarModelerWidget(PluginWidget):
         self.worker.start()
 
     def handle_result(self, res: ModelResult):
+        parent = self._get_dialog_parent()
+        if parent is not None:
+            if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                parent.showNormal()
+            parent.raise_()
+            parent.activateWindow()
+
         self.current_model = res
         self.txt_log.append("\n--- MODEL SUMMARY ---")
         self.txt_log.append(f"Algorithm: {res.model_type}")
@@ -842,12 +868,19 @@ class QsarModelerWidget(PluginWidget):
         self.btn_run.setEnabled(True)
         self.btn_export_csv.setEnabled(True)
         self.btn_export_plots.setEnabled(True)
-        QMessageBox.information(self.widget, "Success", "Modeling completed successfully!")
+        QMessageBox.information(parent, "Success", "Modeling completed successfully!")
 
     def handle_error(self, err_msg):
+        parent = self._get_dialog_parent()
+        if parent is not None:
+            if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                parent.showNormal()
+            parent.raise_()
+            parent.activateWindow()
+
         self.txt_log.append(f"\n<span style='color:red'>ERROR: {err_msg}</span>")
         self.btn_run.setEnabled(True)
-        QMessageBox.critical(self.widget, "Error", err_msg)
+        QMessageBox.critical(parent, "Error", err_msg)
 
     def export_csv(self):
         if not self.current_model: return
@@ -931,18 +964,29 @@ class QsarModelerWidget(PluginWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
 
         dialog = QDialog()
-        dialog.setWindowTitle("Plugin")
+        dialog.setWindowTitle("QSAR Modeler")
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -964,11 +1008,18 @@ class QsarModelerWidget(PluginWidget):
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self.widget)
         self.widget.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         self.widget.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 class QsarModelerPlugin(BasePlugin):

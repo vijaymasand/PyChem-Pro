@@ -348,8 +348,9 @@ class RadiusOfGyrationWidget(QWidget):
             self.lbl_dir.setText(f"Folder: {os.path.basename(dir_path)}")
 
     def run_processing(self):
+        parent = self._get_dialog_parent()
         if not self.input_dir:
-            QMessageBox.warning(self, "Warning", "Please select an input directory.")
+            QMessageBox.warning(parent, "Warning", "Please select an input directory.")
             return
             
         fmt = self.combo_format.currentText()
@@ -359,7 +360,7 @@ class RadiusOfGyrationWidget(QWidget):
         self.results = process_folder_parallel(self.input_dir, exts, 0.1, cores)
         
         if not self.results:
-            QMessageBox.warning(self, "No Files", "No molecules were processed.")
+            QMessageBox.warning(parent, "No Files", "No molecules were processed.")
             return
             
         # Update Table
@@ -465,7 +466,13 @@ class RadiusOfGyrationWidget(QWidget):
                     row.append(f"{avg_val:.4f}")
                 writer.writerow(row)
                 
-        QMessageBox.information(self, "Success", f"Saved:\n1. {rg_csv}\n2. {dist_csv}")
+        parent = self._get_dialog_parent()
+        if parent is not None:
+            if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                parent.showNormal()
+            parent.raise_()
+            parent.activateWindow()
+        QMessageBox.information(parent, "Success", f"Saved:\n1. {rg_csv}\n2. {dist_csv}")
 
 
 # =========================================================================
@@ -474,24 +481,35 @@ class RadiusOfGyrationWidget(QWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
         
         try:
-            from src.shared.qt_compat import QDialog, QVBoxLayout, Qt
+            from src.shared.qt_compat import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, Qt
         except:
-            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton
             from PySide6.QtCore import Qt
 
         dialog = QDialog()
-        dialog.setWindowTitle('Plugin')
+        dialog.setWindowTitle('Radius of Gyration')
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -514,11 +532,18 @@ class RadiusOfGyrationWidget(QWidget):
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         w.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 class RadiusOfGyrationPlugin(BasePlugin):
     def __init__(self):

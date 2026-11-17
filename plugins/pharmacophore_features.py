@@ -1246,7 +1246,7 @@ class PharmacophoreVisualizerWidget(QWidget):
     def _load_current_molecule(self):
         """Load molecule from the main PyChem viewer."""
         if not self.plugin or not self.plugin.api:
-            QMessageBox.warning(self, "No API", "Plugin API not connected.")
+            QMessageBox.warning(self._get_dialog_parent(), "No API", "Plugin API not connected.")
             return
         mol = self.plugin.get_current_molecule()
         if mol:
@@ -1257,7 +1257,7 @@ class PharmacophoreVisualizerWidget(QWidget):
             self._run_analysis()
         else:
             QMessageBox.information(
-                self, "No Molecule",
+                self._get_dialog_parent(), "No Molecule",
                 "No molecule loaded in the main viewer.\n"
                 "Use 'Open File' to load a MOL/SDF/MOL2 file directly."
             )
@@ -1288,7 +1288,7 @@ class PharmacophoreVisualizerWidget(QWidget):
                 mol = read_mol(path)
             else:
                 QMessageBox.warning(
-                    self, "Unknown Format",
+                    parent, "Unknown Format",
                     f"Unsupported file format: {ext}\n"
                     "Supported: .mol, .sdf, .mol2"
                 )
@@ -1305,7 +1305,7 @@ class PharmacophoreVisualizerWidget(QWidget):
 
         except Exception as e:
             logging.error(f"File load error: {e}", exc_info=True)
-            QMessageBox.critical(self, "Load Error", str(e))
+            QMessageBox.critical(self._get_dialog_parent(), "Load Error", str(e))
 
     def set_molecule(self, molecule):
         self.molecule = molecule
@@ -1323,13 +1323,13 @@ class PharmacophoreVisualizerWidget(QWidget):
 
     def _run_analysis(self):
         if not self.molecule:
-            QMessageBox.warning(self, "No Molecule", "Load a molecule first.")
+            QMessageBox.warning(self._get_dialog_parent(), "No Molecule", "Load a molecule first.")
             return
 
         has_3d = any(a.has_coords for a in self.molecule.atoms)
         if not has_3d:
             QMessageBox.warning(
-                self, "No 3D Coordinates",
+                self._get_dialog_parent(), "No 3D Coordinates",
                 "The molecule has no 3D coordinates.\n"
                 "Load a PDB/MOL2/SDF file with 3D coords."
             )
@@ -1342,7 +1342,7 @@ class PharmacophoreVisualizerWidget(QWidget):
             self._update_stats()
         except Exception as e:
             logging.error(f"Pharmacophore analysis error: {e}", exc_info=True)
-            QMessageBox.critical(self, "Analysis Error", str(e))
+            QMessageBox.critical(self._get_dialog_parent(), "Analysis Error", str(e))
 
     def _on_filter_changed(self, _state):
         """Re-render when filter checkboxes change."""
@@ -1852,13 +1852,13 @@ class PharmacophoreVisualizerWidget(QWidget):
             image.setDotsPerMeterY(dpm)
             if image.save(path):
                 QMessageBox.information(
-                    self, "Exported",
+                    self._get_dialog_parent(), "Exported",
                     f"Saved: {os.path.basename(path)} ({w}\u00d7{h} @ 300 DPI)"
                 )
             else:
                 raise Exception("QImage.save failed.")
         except Exception as e:
-            QMessageBox.critical(self, "Export Error", str(e))
+            QMessageBox.critical(self._get_dialog_parent(), "Export Error", str(e))
 
 
 # =============================================================================
@@ -1868,24 +1868,35 @@ class PharmacophoreVisualizerWidget(QWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
         
         try:
-            from src.shared.qt_compat import QDialog, QVBoxLayout, Qt
+            from src.shared.qt_compat import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, Qt
         except:
-            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton
             from PySide6.QtCore import Qt
 
         dialog = QDialog()
-        dialog.setWindowTitle('Plugin')
+        dialog.setWindowTitle('Pharmacophore Features')
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -1908,11 +1919,18 @@ class PharmacophoreVisualizerWidget(QWidget):
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         w.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 

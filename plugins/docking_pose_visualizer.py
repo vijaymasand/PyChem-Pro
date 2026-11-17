@@ -498,6 +498,8 @@ class VisualizerSettingsDialog(QDialog):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
@@ -508,8 +510,17 @@ class VisualizerSettingsDialog(QDialog):
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -531,11 +542,18 @@ class VisualizerSettingsDialog(QDialog):
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self)
         self.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         self.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
     def done(self, r):
         for w in [self.parent_widget.sp_node, self.parent_widget.sp_inner_fsize, 
@@ -1517,7 +1535,7 @@ class DockingPoseVisualizerWidget(QWidget):
             # 4. Prepare scene rendering
             source_rect = self.viewer.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20)
             if source_rect.isNull() or source_rect.width() < 1:
-                QMessageBox.warning(self, "Export Error", "The visualization scene is empty.")
+                QMessageBox.warning(self._get_dialog_parent(), "Export Error", "The visualization scene is empty.")
                 return
                 
             # Correct math for pixel dimensions
@@ -1542,13 +1560,13 @@ class DockingPoseVisualizerWidget(QWidget):
             image.setDotsPerMeterY(dpm)
             
             if image.save(path):
-                QMessageBox.information(self, "Success", f"Exported: {os.path.basename(path)}\nResolution: {target_width}x{target_height} ({dpi} DPI)")
+                QMessageBox.information(self._get_dialog_parent(), "Success", f"Exported: {os.path.basename(path)}\nResolution: {target_width}x{target_height} ({dpi} DPI)")
             else:
                 raise Exception("QImage.save returned False. Ensure the path is writable.")
                 
         except Exception as e:
             logging.error(f"Export Error: {e}", exc_info=True)
-            QMessageBox.critical(self, "Export Failed", f"An error occurred during export:\n{str(e)}")
+            QMessageBox.critical(self._get_dialog_parent(), "Export Failed", f"An error occurred during export:\n{str(e)}")
 
     def _popout_viewer(self) -> None:
         """
@@ -1591,24 +1609,35 @@ class DockingPoseVisualizerWidget(QWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
         
         try:
-            from src.shared.qt_compat import QDialog, QVBoxLayout, Qt
+            from src.shared.qt_compat import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, Qt
         except:
-            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton
             from PySide6.QtCore import Qt
 
         dialog = QDialog()
-        dialog.setWindowTitle('Plugin')
+        dialog.setWindowTitle('2D Docking Pose Visualizer')
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -1631,11 +1660,18 @@ class DockingPoseVisualizerWidget(QWidget):
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         w.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 
