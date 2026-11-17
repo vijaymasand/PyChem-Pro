@@ -1045,7 +1045,7 @@ class QsarRfaWidget(PluginWidget):
                 f"Created stratified split: train={len(train_ids)}, test={len(test_ids)}."
             )
         except Exception as e:
-            QMessageBox.critical(self.widget, 'Split Error', str(e))
+            QMessageBox.critical(self._get_dialog_parent(), 'Split Error', str(e))
 
     def move_to_train(self):
         selected_items = self.tbl_test.selectedItems()
@@ -1054,8 +1054,11 @@ class QsarRfaWidget(PluginWidget):
         rows = sorted({item.row() for item in selected_items}, reverse=True)
         for row in rows:
             item = self.tbl_test.takeItem(row, 0)
-            self.tbl_train.insertRow(self.tbl_train.rowCount())
-            self.tbl_train.setItem(self.tbl_train.rowCount() - 1, 0, item)
+            self.tbl_test.removeRow(row)
+            if item is not None:
+                new_row = self.tbl_train.rowCount()
+                self.tbl_train.insertRow(new_row)
+                self.tbl_train.setItem(new_row, 0, item)
 
     def move_to_test(self):
         selected_items = self.tbl_train.selectedItems()
@@ -1064,15 +1067,19 @@ class QsarRfaWidget(PluginWidget):
         rows = sorted({item.row() for item in selected_items}, reverse=True)
         for row in rows:
             item = self.tbl_train.takeItem(row, 0)
-            self.tbl_test.insertRow(self.tbl_test.rowCount())
-            self.tbl_test.setItem(self.tbl_test.rowCount() - 1, 0, item)
+            self.tbl_train.removeRow(row)
+            if item is not None:
+                new_row = self.tbl_test.rowCount()
+                self.tbl_test.insertRow(new_row)
+                self.tbl_test.setItem(new_row, 0, item)
 
     # ---------------------------
     # Execute / output
     # ---------------------------
     def run_analysis(self):
+        parent = self._get_dialog_parent()
         if self.dataset is None or self.tbl_train.rowCount() == 0:
-            QMessageBox.warning(self.widget, 'Warning', 'Load data and assign a training set first.')
+            QMessageBox.warning(parent, 'Warning', 'Load data and assign a training set first.')
             return
 
         self.btn_run.setEnabled(False)
@@ -1082,7 +1089,10 @@ class QsarRfaWidget(PluginWidget):
         config = {}
         try:
             for i in range(self.settings_tbl.rowCount()):
-                config[self.settings_tbl.item(i, 0).text()] = self.settings_tbl.item(i, 1).text()
+                k_item = self.settings_tbl.item(i, 0)
+                v_item = self.settings_tbl.item(i, 1)
+                if k_item is not None and v_item is not None:
+                    config[k_item.text().strip()] = v_item.text().strip()
             config['Model Type'] = self.model_combo.currentText()
             config['Class Mode'] = self.class_mode_combo.currentText()
             config['Use MARS'] = self.use_mars_check.isChecked()
@@ -1096,23 +1106,28 @@ class QsarRfaWidget(PluginWidget):
             validate_class_mode(n_classes, config['Class Mode'])
         except Exception as e:
             self.btn_run.setEnabled(True)
-            QMessageBox.warning(self.widget, 'Configuration Error', str(e))
+            QMessageBox.warning(parent, 'Configuration Error', str(e))
             return
 
         train_ids = [
-            self.tbl_train.item(i, 0).text()
+            self.tbl_train.item(i, 0).text().strip()
             for i in range(self.tbl_train.rowCount())
-            if self.tbl_train.item(i, 0) is not None
+            if self.tbl_train.item(i, 0) is not None and self.tbl_train.item(i, 0).text().strip()
         ]
         test_ids = [
-            self.tbl_test.item(i, 0).text()
+            self.tbl_test.item(i, 0).text().strip()
             for i in range(self.tbl_test.rowCount())
-            if self.tbl_test.item(i, 0) is not None
+            if self.tbl_test.item(i, 0) is not None and self.tbl_test.item(i, 0).text().strip()
         ]
+
+        if not train_ids:
+            self.btn_run.setEnabled(True)
+            QMessageBox.warning(parent, 'Warning', 'Training set is empty. Assign at least one compound to the training set.')
+            return
 
         if set(train_ids) & set(test_ids):
             self.btn_run.setEnabled(True)
-            QMessageBox.warning(self.widget, 'Split Error', 'Training and test ID lists overlap.')
+            QMessageBox.warning(parent, 'Split Error', 'Training and test ID lists overlap.')
             return
 
         self.progress.setValue(0)
@@ -1129,8 +1144,15 @@ class QsarRfaWidget(PluginWidget):
     def handle_finish(self, success, msg, result_data):
         self.btn_run.setEnabled(True)
         self.progress.setVisible(False)
+        parent = self._get_dialog_parent()
+        if parent is not None:
+            if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                parent.showNormal()
+            parent.raise_()
+            parent.activateWindow()
+
         if not success:
-            QMessageBox.critical(self.widget, 'Error', msg)
+            QMessageBox.critical(parent, 'Error', msg)
             return
 
         self.result_cache = result_data['results_df']
@@ -1206,7 +1228,7 @@ Perm. p MCC   : {fmt(m['yrand_p_mcc'])}
         self.txt_log.append(metrics_str)
         self.render_all_plots()
         QMessageBox.information(
-            self.widget, 'Success',
+            parent, 'Success',
             'Classification analysis complete. View metrics, plots and exportable predictions.'
         )
 
@@ -1427,6 +1449,8 @@ Perm. p MCC   : {fmt(m['yrand_p_mcc'])}
 
     def _open_popout(self, fullscreen=False):
         if self._active_popout is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
@@ -1435,8 +1459,18 @@ Perm. p MCC   : {fmt(m['yrand_p_mcc'])}
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
+
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.splitter.setParent(dialog)
         vbox.addWidget(self.splitter)
+        self.splitter.show()
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
         if fullscreen:
@@ -1456,11 +1490,18 @@ Perm. p MCC   : {fmt(m['yrand_p_mcc'])}
     def _restore_from_popout(self):
         self.splitter.setParent(self.widget)
         self.widget.layout().addWidget(self.splitter)
+        self.splitter.show()
         self._active_popout = None
         self.widget.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 # ===================================================================

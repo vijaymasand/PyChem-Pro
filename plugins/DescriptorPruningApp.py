@@ -123,23 +123,23 @@ class DescriptorPruningWidget(PluginWidget):
             self.status_text.append(f"Loaded {len(files)} files.")
 
     def run_pipeline(self):
+        parent = self._get_dialog_parent()
         if not self.desc_files:
-            QMessageBox.warning(self.widget, "Error", "No files selected.")
+            QMessageBox.warning(parent, "Error", "No files selected.")
             return
 
         # Extract values from the settings table safely
         try:
-            target_dv = self.settings_table.item(0, 1).text().strip()
-            p_const = float(self.settings_table.item(1, 1).text())
-            var_thresh = float(self.settings_table.item(2, 1).text())
-            corr_dv_min = float(self.settings_table.item(3, 1).text())
-            corr_inter = float(self.settings_table.item(4, 1).text())
-            top_n = int(self.settings_table.item(5, 1).text())
-        except ValueError:
-            QMessageBox.warning(self.widget, "Input Error", "Please ensure all numeric settings contain valid numbers.")
+            target_dv = self.settings_table.item(0, 1).text().strip() if self.settings_table.item(0, 1) else ""
+            p_const = float(self.settings_table.item(1, 1).text()) if self.settings_table.item(1, 1) else 95.0
+            var_thresh = float(self.settings_table.item(2, 1).text()) if self.settings_table.item(2, 1) else 0.001
+            corr_dv_min = float(self.settings_table.item(3, 1).text()) if self.settings_table.item(3, 1) else 0.1
+            corr_inter = float(self.settings_table.item(4, 1).text()) if self.settings_table.item(4, 1) else 0.9
+            top_n = int(self.settings_table.item(5, 1).text()) if self.settings_table.item(5, 1) else 50
+        except (ValueError, AttributeError):
+            QMessageBox.warning(parent, "Input Error", "Please ensure all numeric settings contain valid numbers.")
             return
 
-        parent = self._get_dialog_parent()
         save_path, _ = QFileDialog.getSaveFileName(parent, "Save Master CSV", "Final_Master_Descriptors.csv", "CSV Files (*.csv)")
         parent.raise_()
         parent.activateWindow()
@@ -172,7 +172,7 @@ class DescriptorPruningWidget(PluginWidget):
                     break
 
             if y_data is None:
-                QMessageBox.critical(self.widget, "Error", f"Could not find '{target_dv}' in any file.")
+                QMessageBox.critical(parent, "Error", f"Could not find '{target_dv}' in any file.")
                 self.run_btn.setEnabled(True)
                 return
 
@@ -232,11 +232,16 @@ class DescriptorPruningWidget(PluginWidget):
             master.to_csv(save_path, index=False)
 
             self.status_text.append(f"<b>Success!</b> Retained {master.shape[1]-2} descriptors.")
-            QMessageBox.information(self.widget, "Success", f"Master File and Log Created successfully at:\n{save_path}")
+            if parent is not None:
+                if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                    parent.showNormal()
+                parent.raise_()
+                parent.activateWindow()
+            QMessageBox.information(parent, "Success", f"Master File and Log Created successfully at:\n{save_path}")
 
         except Exception as e:
             self.status_text.append(f"<span style='color:red'>Error: {str(e)}</span>")
-            QMessageBox.critical(self.widget, "Processing Error", str(e))
+            QMessageBox.critical(parent, "Processing Error", str(e))
         finally:
             self.run_btn.setEnabled(True)
 
@@ -253,18 +258,29 @@ class DescriptorPruningWidget(PluginWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
 
         dialog = QDialog()
-        dialog.setWindowTitle("Plugin")
+        dialog.setWindowTitle("Descriptor Pruning")
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -277,11 +293,18 @@ class DescriptorPruningWidget(PluginWidget):
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self.widget)
         self.widget.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         self.widget.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 class DescriptorPruningPlugin(BasePlugin):

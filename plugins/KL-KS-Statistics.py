@@ -301,7 +301,7 @@ class StatComparisonWidget(QWidget):
                 print(f"Failed to clean {filename}: {e}")
                 
         if not self.loaded_datasets:
-            QMessageBox.critical(self, "Error", "No valid numerical data found.")
+            QMessageBox.critical(self._get_dialog_parent(), "Error", "No valid numerical data found.")
             return
             
         self.common_columns = sorted(list(first_cols)) if first_cols else []
@@ -314,8 +314,9 @@ class StatComparisonWidget(QWidget):
         self.lbl_status.setText(f"Loaded {len(self.loaded_datasets)} file(s). Shared columns: {len(self.common_columns)}")
 
     def run_comparison(self):
+        parent = self._get_dialog_parent()
         if not self.loaded_datasets:
-            QMessageBox.warning(self, "Warning", "Please load CSV files first.")
+            QMessageBox.warning(parent, "Warning", "Please load CSV files first.")
             return
             
         ref_name = self.combo_ref.currentText()
@@ -323,7 +324,7 @@ class StatComparisonWidget(QWidget):
         cores = self.spin_processors.value()
         
         if not ref_name or not target_col:
-            QMessageBox.warning(self, "Warning", "Select reference and target column.")
+            QMessageBox.warning(parent, "Warning", "Select reference and target column.")
             return
             
         ref_df = self.loaded_datasets[ref_name]
@@ -377,18 +378,29 @@ class StatComparisonWidget(QWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
 
         dialog = QDialog()
-        dialog.setWindowTitle("Plugin")
+        dialog.setWindowTitle("KL & KS Statistics")
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -410,11 +422,18 @@ class StatComparisonWidget(QWidget):
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self)
         self.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         self.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 # =========================================================================

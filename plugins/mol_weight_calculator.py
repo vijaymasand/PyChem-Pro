@@ -134,8 +134,9 @@ class MolWeightWidget(PluginWidget):
 
     def calculate_properties(self):
         """Calculate molecular weight and composition."""
+        parent = self._get_dialog_parent()
         if not self.plugin.current_molecule:
-            QMessageBox.warning(self.widget, "No Molecule",
+            QMessageBox.warning(parent, "No Molecule",
                               "Please load a molecule first.")
             return
 
@@ -199,7 +200,7 @@ class MolWeightWidget(PluginWidget):
 
         except Exception as e:
             self.status_text.append(f"✗ Error: {str(e)}")
-            QMessageBox.critical(self.widget, "Calculation Error",
+            QMessageBox.critical(parent, "Calculation Error",
                                f"Failed to calculate properties:\n{str(e)}")
 
     def export_results(self):
@@ -222,8 +223,10 @@ class MolWeightWidget(PluginWidget):
             writer.writerow(["Molecular Weight Results"])
             writer.writerow(["Property", "Value"])
             for row in range(self.results_table.rowCount()):
-                prop = self.results_table.item(row, 0).text()
-                value = self.results_table.item(row, 1).text()
+                p_item = self.results_table.item(row, 0)
+                v_item = self.results_table.item(row, 1)
+                prop = p_item.text() if p_item else ""
+                value = v_item.text() if v_item else ""
                 writer.writerow([prop, value])
 
             writer.writerow([])  # Empty row
@@ -232,9 +235,12 @@ class MolWeightWidget(PluginWidget):
             writer.writerow(["Element Composition"])
             writer.writerow(["Element", "Count", "Mass Contribution"])
             for row in range(self.element_table.rowCount()):
-                element = self.element_table.item(row, 0).text()
-                count = self.element_table.item(row, 1).text()
-                mass = self.element_table.item(row, 2).text()
+                e_item = self.element_table.item(row, 0)
+                c_item = self.element_table.item(row, 1)
+                m_item = self.element_table.item(row, 2)
+                element = e_item.text() if e_item else ""
+                count = c_item.text() if c_item else ""
+                mass = m_item.text() if m_item else ""
                 writer.writerow([element, count, mass])
 
             # Save to file
@@ -275,24 +281,35 @@ class MolWeightWidget(PluginWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
         
         try:
-            from src.shared.qt_compat import QDialog, QVBoxLayout, Qt
+            from src.shared.qt_compat import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, Qt
         except:
-            from PySide6.QtWidgets import QDialog, QVBoxLayout
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton
             from PySide6.QtCore import Qt
 
         dialog = QDialog()
-        dialog.setWindowTitle('Plugin')
+        dialog.setWindowTitle('Molecular Weight Calculator')
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -315,11 +332,18 @@ class MolWeightWidget(PluginWidget):
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         w.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 class MolWeightCalculatorPlugin(BasePlugin):
     """

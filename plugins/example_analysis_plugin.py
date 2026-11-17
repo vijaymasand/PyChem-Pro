@@ -104,8 +104,9 @@ class ExampleAnalysisWidget(PluginWidget):
         self.update_ui_state(False)
 
     def calculate_properties(self):
+        parent = self._get_dialog_parent()
         if not self.plugin.current_molecule:
-            QMessageBox.warning(self.widget, "No Molecule", "Please load a molecule first.")
+            QMessageBox.warning(parent, "No Molecule", "Please load a molecule first.")
             return
 
         try:
@@ -124,7 +125,7 @@ class ExampleAnalysisWidget(PluginWidget):
 
         except Exception as e:
             self.status_text.append(f"✗ Error: {e}")
-            QMessageBox.critical(self.widget, "Calculation Error", f"Error during calculation:\n{e}")
+            QMessageBox.critical(parent, "Calculation Error", f"Error during calculation:\n{e}")
         finally:
             self.calculate_btn.setEnabled(True)
             self.progress_bar.setVisible(False)
@@ -182,10 +183,13 @@ class ExampleAnalysisWidget(PluginWidget):
                 writer = csv.writer(csvfile)
                 writer.writerow(['Property', 'Value', 'Unit'])
                 for row in range(self.results_table.rowCount()):
+                    p_item = self.results_table.item(row, 0)
+                    v_item = self.results_table.item(row, 1)
+                    u_item = self.results_table.item(row, 2)
                     writer.writerow([
-                        self.results_table.item(row, 0).text(),
-                        self.results_table.item(row, 1).text(),
-                        self.results_table.item(row, 2).text()
+                        p_item.text() if p_item else "",
+                        v_item.text() if v_item else "",
+                        u_item.text() if u_item else ""
                     ])
 
             self.status_text.append(f"✓ Results exported to: {filepath}")
@@ -214,18 +218,29 @@ class ExampleAnalysisWidget(PluginWidget):
 
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
 
         dialog = QDialog()
-        dialog.setWindowTitle("Plugin")
+        dialog.setWindowTitle("Example Analysis Plugin")
         dialog.setWindowFlags(Qt.Window)
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -247,11 +262,18 @@ class ExampleAnalysisWidget(PluginWidget):
     def _restore_from_popout(self) -> None:
         self.main_content_widget.setParent(self.widget)
         self.widget.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         self.widget.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 class ExampleAnalysisPlugin(BasePlugin):

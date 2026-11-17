@@ -748,7 +748,7 @@ class CalculateFingerprintsWidget(PluginWidget):
         compute_tanimoto = self.chk_tanimoto.isChecked()
 
         output_path, _ = QFileDialog.getSaveFileName(
-            self.widget, "Save QSAR Fingerprint Dataset", "fingerprints_qsar.csv", "CSV Files (*.csv);;TSV Files (*.tsv)"
+            self._get_dialog_parent(), "Save QSAR Fingerprint Dataset", "fingerprints_qsar.csv", "CSV Files (*.csv);;TSV Files (*.tsv)"
         )
         if not output_path:
             return
@@ -763,7 +763,7 @@ class CalculateFingerprintsWidget(PluginWidget):
                     sep = '\t' if '\t' in first_line else ','
                 full_df = pd.read_csv(input_path, sep=sep)
         except Exception as e:
-            QMessageBox.critical(self.widget, "Dataset Load Error", f"Failed to load dataset:\n{str(e)}")
+            QMessageBox.critical(self._get_dialog_parent(), "Dataset Load Error", f"Failed to load dataset:\n{str(e)}")
             return
 
         initial_len = len(full_df)
@@ -775,7 +775,7 @@ class CalculateFingerprintsWidget(PluginWidget):
             self.log(f"Filtered out {initial_len - valid_len} empty/invalid SMILES rows.")
 
         if valid_len == 0:
-            QMessageBox.warning(self.widget, "Warning", "No valid SMILES entries found.")
+            QMessageBox.warning(self._get_dialog_parent(), "Warning", "No valid SMILES entries found.")
             return
 
         smiles_list = full_df[smiles_col].astype(str).tolist()
@@ -853,7 +853,14 @@ class CalculateFingerprintsWidget(PluginWidget):
                 f"Dataset Shape:         {output_df.shape}\n\n"
                 f"Output Path: {output_path}"
             )
-            QMessageBox.information(self.widget, "QSAR Fingerprint Success", summary)
+            parent = self._get_dialog_parent()
+            if parent is not None:
+                if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                    parent.showNormal()
+                parent.raise_()
+                parent.activateWindow()
+
+            QMessageBox.information(parent, "QSAR Fingerprint Success", summary)
             self.log(summary.replace('\n\n', ' | ').replace('\n', ' | '))
 
             if errors:
@@ -862,13 +869,19 @@ class CalculateFingerprintsWidget(PluginWidget):
                     self.log(err)
 
         except Exception as e:
-            QMessageBox.critical(self.widget, "Export Error", f"Could not write output files:\n{str(e)}")
+            QMessageBox.critical(self._get_dialog_parent(), "Export Error", f"Could not write output files:\n{str(e)}")
             self.log(f"Save error: {str(e)}")
 
     def on_error(self, err_msg: str):
         self.progress_bar.setVisible(False)
         self.btn_run.setEnabled(True)
-        QMessageBox.critical(self.widget, "Worker Error", f"Error during execution:\n{err_msg}")
+        parent = self._get_dialog_parent()
+        if parent is not None:
+            if hasattr(parent, 'isMinimized') and parent.isMinimized():
+                parent.showNormal()
+            parent.raise_()
+            parent.activateWindow()
+        QMessageBox.critical(parent, "Worker Error", f"Error during execution:\n{err_msg}")
         self.log(f"Fatal error: {err_msg}")
 
     # -------------------------------------------------------------------------
@@ -882,20 +895,20 @@ class CalculateFingerprintsWidget(PluginWidget):
                 self.txt_inspect_smiles.setText(smiles)
                 self.inspect_single_smiles()
             else:
-                QMessageBox.information(self.widget, "Molecule Active", "Active molecule found in workspace without SMILES string.")
+                QMessageBox.information(self._get_dialog_parent(), "Molecule Active", "Active molecule found in workspace without SMILES string.")
         else:
-            QMessageBox.information(self.widget, "No Active Molecule", "No active molecule currently loaded in PyChem-Pro window.")
+            QMessageBox.information(self._get_dialog_parent(), "No Active Molecule", "No active molecule currently loaded in PyChem-Pro window.")
 
     def inspect_single_smiles(self):
         smiles = self.txt_inspect_smiles.text().strip()
         if not smiles:
-            QMessageBox.warning(self.widget, "Missing SMILES", "Please enter a valid SMILES string.")
+            QMessageBox.warning(self._get_dialog_parent(), "Missing SMILES", "Please enter a valid SMILES string.")
             return
 
         try:
             mol = parse_smiles(smiles)
             if mol is None:
-                QMessageBox.warning(self.widget, "Parse Error", "Failed to parse SMILES string.")
+                QMessageBox.warning(self._get_dialog_parent(), "Parse Error", "Failed to parse SMILES string.")
                 return
 
             morg = get_morgan_fingerprint(mol, radius=2, n_bits=2048)
@@ -919,21 +932,21 @@ class CalculateFingerprintsWidget(PluginWidget):
             ]
             self.txt_inspect_result.setText("\n".join(res))
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error", f"Failed to compute single molecule fingerprints:\n{e}")
+            QMessageBox.critical(self._get_dialog_parent(), "Error", f"Failed to compute single molecule fingerprints:\n{e}")
 
     def compare_smiles_tanimoto(self):
         smiles1 = self.txt_inspect_smiles.text().strip()
         smiles2 = self.txt_ref_smiles.text().strip()
 
         if not smiles1 or not smiles2:
-            QMessageBox.warning(self.widget, "Missing SMILES", "Please specify both SMILES strings.")
+            QMessageBox.warning(self._get_dialog_parent(), "Missing SMILES", "Please specify both SMILES strings.")
             return
 
         try:
             mol1 = parse_smiles(smiles1)
             mol2 = parse_smiles(smiles2)
             if not mol1 or not mol2:
-                QMessageBox.warning(self.widget, "Parse Error", "Failed to parse one of the SMILES strings.")
+                QMessageBox.warning(self._get_dialog_parent(), "Parse Error", "Failed to parse one of the SMILES strings.")
                 return
 
             fp1 = get_morgan_fingerprint(mol1, radius=2, n_bits=2048)
@@ -942,7 +955,7 @@ class CalculateFingerprintsWidget(PluginWidget):
             sim = tanimoto_similarity(fp1, fp2)
             self.lbl_similarity_res.setText(f"Morgan Tanimoto Similarity: {sim:.4f}")
         except Exception as e:
-            QMessageBox.critical(self.widget, "Error", f"Similarity calculation error:\n{e}")
+            QMessageBox.critical(self._get_dialog_parent(), "Error", f"Similarity calculation error:\n{e}")
 
     def _update_matrix_tab_display(self, tanimoto_df: pd.DataFrame):
         if tanimoto_df is None or len(tanimoto_df) == 0:
@@ -999,6 +1012,8 @@ class CalculateFingerprintsWidget(PluginWidget):
     # -------------------------------------------------------------------------
     def _open_popout(self, fullscreen: bool = False) -> None:
         if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
             self._active_popout.raise_()
             self._active_popout.activateWindow()
             return
@@ -1009,8 +1024,17 @@ class CalculateFingerprintsWidget(PluginWidget):
         vbox = QVBoxLayout(dialog)
         vbox.setContentsMargins(4, 4, 4, 4)
 
+        popout_bar = QHBoxLayout()
+        popout_bar.addStretch()
+        btn_dock = QPushButton("Dock to Main Window")
+        btn_dock.setToolTip("Dock this panel back into the main application window (or press Esc)")
+        btn_dock.clicked.connect(dialog.close)
+        popout_bar.addWidget(btn_dock)
+        vbox.addLayout(popout_bar)
+
         self.main_content_widget.setParent(dialog)
         vbox.addWidget(self.main_content_widget)
+        self.main_content_widget.show()
 
         dialog.finished.connect(self._restore_from_popout)
         self._active_popout = dialog
@@ -1033,11 +1057,18 @@ class CalculateFingerprintsWidget(PluginWidget):
         w = getattr(self, 'widget', self)
         self.main_content_widget.setParent(w)
         w.layout().addWidget(self.main_content_widget)
+        self.main_content_widget.show()
         self._active_popout = None
         w.update()
 
     def toggle_maximize(self):
-        self._open_popout(fullscreen=False)
+        if getattr(self, '_active_popout', None) is not None:
+            if self._active_popout.isMinimized():
+                self._active_popout.showNormal()
+            self._active_popout.raise_()
+            self._active_popout.activateWindow()
+        else:
+            self._open_popout(fullscreen=False)
 
 
 # =============================================================================
